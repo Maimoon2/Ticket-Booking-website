@@ -1,6 +1,6 @@
-# [Project name]
+# ScenePass
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+ScenePass is a production-style movie and concert ticket booking platform with real seat inventory, transactional checkout, and role-based operations.
 
 ## Run & Operate
 
@@ -22,23 +22,32 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/ticket-booking/src` — React/Vite customer, organiser, and admin UI.
+- `artifacts/api-server/src/routes/tickets.ts` — REST endpoints and booking business logic.
+- `lib/db/src/schema/index.ts` — PostgreSQL/Drizzle source-of-truth schema.
+- `lib/api-spec/openapi.yaml` — REST contract; generated clients live under `lib/api-client-react` and `lib/api-zod`.
+- `system-design.md` — concurrency, hold TTL, and waitlist design.
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Seat availability is stored per event in `event_seats`, never globally on a venue seat.
+- Holds and checkout lock rows inside PostgreSQL transactions; a failed multi-seat hold rolls back completely.
+- Waitlist offers are durable records and reserve one specific event seat until claim or expiry.
+- SMTP is optional for local/demo use; QR tickets remain available in the booking UI when email is disabled.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Customers can discover events, select seats from a live-polled map, hold and purchase tickets, view QR tickets, cancel bookings, and join category-specific waitlists. Organisers manage events and review sales analytics; admins manage venues and seat layouts.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+No project-specific preferences recorded.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- `DATABASE_URL` is required for the API, and schema setup must run before seed.
+- Use `PORT` and `BASE_PATH` when running Vite builds/configs outside the Replit workflows (for example `PORT=5000 BASE_PATH=/ pnpm run build`).
+- Do not commit populated `.env` files or SMTP/JWT/database credentials.
 
 ## Pointers
 
