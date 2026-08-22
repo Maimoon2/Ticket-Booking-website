@@ -417,7 +417,9 @@ router.get("/organiser/events/:id/analytics", requireAuth, requireRole("ORGANISE
     [req.params.id],
   );
   const r = result.rows[0];
-  return res.json({ totalEvents: 1, totalBookings: Number(r.total_bookings), revenue: money(r.revenue), occupancy: r.capacity ? Number(r.sold) / Number(r.capacity) : 0, recentBookings: [] });
+  const recent = await pool.query(`SELECT id FROM bookings WHERE event_id=$1 ORDER BY created_at DESC LIMIT 5`, [req.params.id]);
+  const recentBookings = (await Promise.all(recent.rows.map((row) => bookingPayload(row.id)))).filter(Boolean);
+  return res.json({ totalEvents: 1, totalBookings: Number(r.total_bookings), revenue: money(r.revenue), occupancy: r.capacity ? (Number(r.sold) / Number(r.capacity)) * 100 : 0, recentBookings });
 });
 
 router.get("/venues", requireAuth, requireRole("ADMIN"), async (_req, res) => {
@@ -468,7 +470,9 @@ router.post("/venues/:id/seats", requireAuth, requireRole("ADMIN"), async (req, 
 router.get("/dashboard", requireAuth, requireRole("ADMIN"), async (_req, res) => {
   const result = await pool.query(`SELECT (SELECT COUNT(*) FROM events)::int total_events,(SELECT COUNT(*) FROM bookings WHERE status='CONFIRMED')::int total_bookings,COALESCE((SELECT SUM(total) FROM bookings WHERE status='CONFIRMED'),0) revenue,(SELECT COUNT(*) FROM event_seats WHERE status='BOOKED')::float / NULLIF((SELECT COUNT(*) FROM event_seats),0) occupancy`);
   const r = result.rows[0];
-  return res.json({ totalEvents: Number(r.total_events), totalBookings: Number(r.total_bookings), revenue: money(r.revenue), occupancy: Number(r.occupancy || 0), recentBookings: [] });
+  const recent = await pool.query(`SELECT id FROM bookings ORDER BY created_at DESC LIMIT 5`);
+  const recentBookings = (await Promise.all(recent.rows.map((row) => bookingPayload(row.id)))).filter(Boolean);
+  return res.json({ totalEvents: Number(r.total_events), totalBookings: Number(r.total_bookings), revenue: money(r.revenue), occupancy: Number(r.occupancy || 0) * 100, recentBookings });
 });
 
 export default router;
