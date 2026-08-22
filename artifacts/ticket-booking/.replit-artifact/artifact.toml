@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "ScenePass Ticket Booking"
+description = "A production-style movie and concert ticket booking platform with real PostgreSQL seat inventory, customer checkout, organiser analytics, admin venue management, secure role-based access, waitlist offers, and QR tickets."
+version = "1.0.0"
+id = "artifacts/ticket-booking"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24438
+
+[services.development]
+run = "pnpm --filter @workspace/ticket-booking run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ticket-booking", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/ticket-booking/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24438"
+BASE_PATH = "/"
