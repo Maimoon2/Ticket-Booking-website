@@ -40,34 +40,54 @@ function EventArt({ event, index = 0, large = false }: { event?: Partial<Event>;
   </div>;
 }
 
-function EventCard({ event, index = 0 }: { event: Event; index?: number }) {
-  return <Link href={`/events/${event.id}`} data-testid={`card-event-${event.id}`} className="group overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_30px_rgba(53,42,30,.035)] transition duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-scene">
-    <EventArt event={event} index={index} />
-    <div className="p-4">
-      <div className="flex items-center justify-between gap-3 text-[10px] font-extrabold uppercase tracking-[.14em] text-muted-foreground"><span>{event.category === EventCategory.CONCERT ? 'Concert' : 'Movie'}</span><span className="flex items-center gap-1 text-accent"><MapPin size={11} />{event.venue.city}</span></div>
-      <h3 className="mt-2 line-clamp-2 font-display text-xl font-extrabold leading-[1.05] tracking-[-.03em] group-hover:text-primary">{event.title}</h3>
-          <h1 className="max-w-3xl font-display text-[clamp(3.8rem,9vw,8.5rem)] font-extrabold leading-[.82] tracking-[-.075em]">Go where<br /><span className="text-primary">the good</span><br />stuff is.</h1>
-          <p className="mt-8 max-w-md text-base leading-7 text-muted-foreground">Tickets for the films, sets, and live moments you will still be talking about on Monday.</p>
-          <div className="mt-7 flex flex-wrap gap-3"><Link href="/events" data-testid="link-hero-browse" className="group flex items-center gap-3 rounded-xl bg-primary px-5 py-3.5 text-sm font-extrabold text-primary-foreground transition hover:-translate-y-0.5">Find an event <span className="grid h-6 w-6 place-items-center rounded-full bg-white/20 transition group-hover:translate-x-1"><ArrowRight size={14} /></span></Link><Link href="/register" data-testid="link-hero-register" className="rounded-xl border border-border bg-card px-5 py-3.5 text-sm font-extrabold transition hover:border-primary">Create your pass</Link></div>
+function EventCard({
+  event,
+  index = 0,
+}: {
+  event: Event;
+  index?: number;
+}) {
+  return (
+    <Link
+      href={`/events/${event.id}`}
+      data-testid={`card-event-${event.id}`}
+      className="group overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_30px_rgba(53,42,30,.035)] transition duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-scene"
+    >
+      <EventArt
+        event={event}
+        index={index}
+      />
+
+      <div className="p-4">
+        <div className="flex items-center justify-between gap-3 text-[10px] font-extrabold uppercase tracking-[.14em] text-muted-foreground">
+          <span>
+            {event.category === EventCategory.CONCERT
+              ? 'Concert'
+              : 'Movie'}
+          </span>
+
+          <span className="flex items-center gap-1 text-accent">
+            <MapPin size={11} />
+            {event.venue.city}
+          </span>
         </div>
-        <div className="relative scene-enter-delay">
-          <div className="absolute -left-5 -top-6 z-10 rounded-full bg-secondary px-4 py-2 font-mono-scene text-[10px] uppercase tracking-[.12em] text-secondary-foreground shadow-scene">curated weekly</div>
-          <Link href={featured ? `/events/${featured.id}` : '/events'} data-testid="link-featured-event" className="block overflow-hidden rounded-[28px] border border-border bg-card shadow-scene">
-            <EventArt event={featured} index={0} large />
-            <div className="flex items-center justify-between gap-4 p-5"><div><p className="font-mono-scene text-[10px] uppercase tracking-[.18em] text-primary">Spotlight pick</p><p className="mt-1 font-display text-2xl font-extrabold">{featured?.title ?? 'A good seat is waiting'}</p><p className="mt-1 text-sm text-muted-foreground">{featured ? dateLabel(featured.startsAt) : 'Explore what is on this week'}</p></div><ChevronRight className="shrink-0 text-primary" /></div>
-          </Link>
+
+        <h3 className="mt-2 line-clamp-2 font-display text-xl font-extrabold leading-[1.05] tracking-[-.03em] group-hover:text-primary">
+          {event.title}
+        </h3>
+
+        <div className="mt-3 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {dateLabel(event.startsAt)}
+          </span>
+
+          <span className="font-mono-scene text-xs font-bold">
+            From {money(event.minPrice)}
+          </span>
         </div>
       </div>
-    </section>
-    <section className="border-y border-border/70 bg-card/55">
-      <div className="mx-auto max-w-[1440px] px-5 py-7 sm:px-8"><div className="flex flex-wrap items-center gap-x-8 gap-y-3 text-xs font-bold text-muted-foreground"><span className="font-mono-scene uppercase tracking-[.15em] text-foreground">Tonight, tomorrow, whenever</span><span className="flex items-center gap-2"><ShieldCheck size={15} className="text-accent" /> Secure checkout</span><span className="flex items-center gap-2"><LayoutGrid size={15} className="text-primary" /> Pick your exact seat</span><span className="flex items-center gap-2"><Clock3 size={15} className="text-accent" /> Instant mobile tickets</span></div></div>
-    </section>
-    <section className="mx-auto max-w-[1440px] px-5 py-14 sm:px-8 lg:py-20">
-      <div className="mb-8 flex items-end justify-between gap-4"><div><p className="font-mono-scene text-[11px] uppercase tracking-[.2em] text-primary">On the radar</p><h2 className="mt-2 font-display text-4xl font-extrabold tracking-[-.05em]">Coming up next</h2></div><Link href="/events" data-testid="link-view-all-events" className="flex items-center gap-2 text-sm font-extrabold text-primary hover:gap-3">View all <ArrowRight size={16} /></Link></div>
-      {eventsQuery.isLoading ? <LoadingGrid /> : eventsQuery.isError ? <ErrorNotice error={eventsQuery.error} onRetry={() => eventsQuery.refetch()} /> : list.length ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{list.map((event, index) => <EventCard key={event.id} event={event} index={index + 1} />)}</div> : <EmptyState title="The calendar is warming up" detail="New screenings and live sets will appear here soon." action={<Link href="/events" data-testid="link-empty-browse" className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">Browse catalog</Link>} />}
-    </section>
-    <section className="mx-auto max-w-[1440px] px-5 pb-20 sm:px-8"><div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]"><div className="rounded-2xl bg-secondary p-7 text-secondary-foreground sm:p-10"><p className="font-mono-scene text-[10px] uppercase tracking-[.2em] text-primary">For the people who make it happen</p><h2 className="mt-4 max-w-md font-display text-4xl font-extrabold leading-none tracking-[-.05em]">Your crowd is already looking.</h2><p className="mt-5 max-w-sm text-sm leading-6 text-secondary-foreground/70">Launch your next event, fill every good seat, and see the room come alive.</p><Link href="/organiser/events/create" data-testid="link-organiser-cta" className="mt-7 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-extrabold text-primary-foreground">Open organiser studio <ArrowRight size={15} /></Link></div><div className="grid grid-cols-2 gap-4 rounded-2xl border border-border bg-card p-5 sm:p-8"><div className="border-b border-border pb-5"><p className="font-display text-4xl font-extrabold text-primary">01</p><p className="mt-2 text-sm font-bold">Choose your night</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Browse by mood, format, or city.</p></div><div className="border-b border-border pb-5"><p className="font-display text-4xl font-extrabold text-accent">02</p><p className="mt-2 text-sm font-bold">Choose your seat</p><p className="mt-1 text-xs leading-5 text-muted-foreground">A clear, live map. No guessing.</p></div><div className="pt-1"><p className="font-display text-4xl font-extrabold text-foreground">03</p><p className="mt-2 text-sm font-bold">Show up ready</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Your pass lives in your pocket.</p></div><div className="flex items-end justify-end pt-1"><Music2Icon /></div></div></div></section>
-  </div>;
+    </Link>
+  );
 }
 
 function Music2Icon() { return <div className="grid h-16 w-16 place-items-center rounded-full border-2 border-primary/40 text-primary"><Music2 size={27} /></div>; }
