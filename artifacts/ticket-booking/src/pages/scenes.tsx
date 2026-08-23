@@ -390,7 +390,7 @@ import { Link, useLocation, useParams, useSearch } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetMeQueryKey, getListBookingsQueryKey, getListEventsQueryKey, getListWaitlistOffersQueryKey, getListWaitlistQueryKey, useCheckout, useClaimWaitlistOffer, useCreateEvent, useCreateHold, useCreateVenue, useCreateVenueSeat, useDeleteVenue, useGetAdminDashboard, useGetBooking, useGetEvent, useGetEventAnalytics, useGetEventSeats, useGetHold, useGetOrganiserAnalytics, useGetVenue, useJoinWaitlist, useLeaveWaitlist, useListBookings, useListEvents, useListOrganiserEvents, useListVenues, useListWaitlist, useListWaitlistOffers, useCancelBooking, useUpdateEvent, useUpdateVenue, login, register } from '@workspace/api-client-react';
 import { EventCategory, EventInputCategory, EventSeatStatus, SeatInputCategory, WaitlistInputCategory, type Booking, type Event, type EventInput } from '@workspace/api-client-react';
-import { dateLabel, EmptyState, ErrorNotice, LoadingGrid, money, PageFrame, StatusPill } from '@/components/app-shell';
+import { dateLabel, ErrorNotice, LoadingGrid, money, PageFrame, StatusPill } from '@/components/app-shell';
 import { type ClaimedOffer, type HoldWithLabels, type PricedEvent } from '@/lib/extra-api';
 
 const art = ['art-coral', 'art-lilac', 'art-amber', 'art-mint'];
@@ -410,6 +410,16 @@ function useToastMessage() {
 function Toast({ message }: { message: string }) {
   if (!message) return null;
   return <div className="fixed bottom-5 right-5 z-50 flex max-w-sm items-center gap-3 rounded-xl bg-secondary px-4 py-3 text-sm font-bold text-secondary-foreground shadow-scene" data-testid="status-toast"><Check size={17} className="text-primary" />{message}</div>;
+}
+
+function EmptyState({ title, detail, action }: { title: string; detail?: string; action?: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-card/50 px-6 py-16 text-center">
+      <h3 className="font-display text-2xl font-extrabold">{title}</h3>
+      {detail && <p className="max-w-md text-sm text-muted-foreground">{detail}</p>}
+      {action && <div className="mt-2">{action}</div>}
+    </div>
+  );
 }
 
 function EventArt({ event, index = 0, large = false }: { event?: Partial<Event>; index?: number; large?: boolean }) {
