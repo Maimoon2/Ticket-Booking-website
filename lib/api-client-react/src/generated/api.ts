@@ -23,13 +23,16 @@ import type {
   Analytics,
   AuthResponse,
   Booking,
+  ClaimedWaitlistOffer,
   ConflictResponse,
+  Error,
   Event,
   EventDetail,
   EventInput,
   EventSeat,
   EventUpdate,
   ForbiddenResponse,
+  GetOrganiserAnalytics200,
   GoneResponse,
   HealthStatus,
   Hold,
@@ -1252,6 +1255,71 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getJoinWaitlistMutationOptions(options));
     }
 
+export const getLeaveWaitlistUrl = (id: string,) => {
+
+
+
+
+  return `/api/waitlist/${id}`
+}
+
+export const leaveWaitlist = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getLeaveWaitlistUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getLeaveWaitlistMutationOptions = <TError = ErrorType<NotFoundResponse | Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveWaitlist>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof leaveWaitlist>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['leaveWaitlist'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof leaveWaitlist>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  leaveWaitlist(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LeaveWaitlistMutationResult = NonNullable<Awaited<ReturnType<typeof leaveWaitlist>>>
+
+    export type LeaveWaitlistMutationError = ErrorType<NotFoundResponse | Error>
+
+    export const useLeaveWaitlist = <TError = ErrorType<NotFoundResponse | Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveWaitlist>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof leaveWaitlist>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getLeaveWaitlistMutationOptions(options));
+    }
+
 export const getListWaitlistOffersUrl = () => {
 
 
@@ -1331,9 +1399,9 @@ export const getClaimWaitlistOfferUrl = (id: string,) => {
   return `/api/waitlist/offers/${id}/claim`
 }
 
-export const claimWaitlistOffer = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<WaitlistOffer> => {
+export const claimWaitlistOffer = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ClaimedWaitlistOffer> => {
 
-  return customFetch<WaitlistOffer>(getClaimWaitlistOfferUrl(id),
+  return customFetch<ClaimedWaitlistOffer>(getClaimWaitlistOfferUrl(id),
   {
     ...options,
     method: 'POST'
@@ -1387,6 +1455,77 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getClaimWaitlistOfferMutationOptions(options));
     }
+
+export const getGetOrganiserAnalyticsUrl = () => {
+
+
+
+
+  return `/api/organiser/analytics`
+}
+
+export const getOrganiserAnalytics = async ( options?: Parameters<typeof customFetch>[1]): Promise<GetOrganiserAnalytics200> => {
+
+  return customFetch<GetOrganiserAnalytics200>(getGetOrganiserAnalyticsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOrganiserAnalyticsQueryKey = () => {
+    return [
+    `/api/organiser/analytics`
+    ] as const;
+    }
+
+
+export const getGetOrganiserAnalyticsQueryOptions = <TData = Awaited<ReturnType<typeof getOrganiserAnalytics>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOrganiserAnalytics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOrganiserAnalyticsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOrganiserAnalytics>>> = ({ signal }) => getOrganiserAnalytics({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOrganiserAnalytics>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOrganiserAnalyticsQueryResult = NonNullable<Awaited<ReturnType<typeof getOrganiserAnalytics>>>
+export type GetOrganiserAnalyticsQueryError = ErrorType<unknown>
+
+
+
+export function useGetOrganiserAnalytics<TData = Awaited<ReturnType<typeof getOrganiserAnalytics>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOrganiserAnalytics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOrganiserAnalyticsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListOrganiserEventsUrl = () => {
 

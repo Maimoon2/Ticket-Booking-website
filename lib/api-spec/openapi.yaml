@@ -273,6 +273,21 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/WaitlistEntry" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /waitlist/{id}:
+    delete:
+      operationId: leaveWaitlist
+      tags: [waitlist]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+      responses:
+        "204": { description: Left the waitlist }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Entry can no longer be removed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
   /waitlist/offers:
     get:
       operationId: listWaitlistOffers
@@ -298,8 +313,33 @@ paths:
           description: Claimed offer
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/WaitlistOffer" }
+              schema: { $ref: "#/components/schemas/ClaimedWaitlistOffer" }
         "410": { $ref: "#/components/responses/Gone" }
+  /organiser/analytics:
+    get:
+      operationId: getOrganiserAnalytics
+      tags: [organiser]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Aggregate analytics across the organiser's events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalEvents: { type: integer }
+                  totalBookings: { type: integer }
+                  revenue: { type: number }
+                  occupancy: { type: number }
+                  dailyBookings:
+                    type: array
+                    description: Confirmed bookings per weekday (Mon-Sun) over the last 7 days
+                    items: { type: integer }
+                  recentBookings:
+                    type: array
+                    items: { $ref: "#/components/schemas/Booking" }
+                required: [totalEvents, totalBookings, revenue, occupancy, recentBookings]
   /organiser/events:
     get:
       operationId: listOrganiserEvents
@@ -652,6 +692,18 @@ components:
         seatId: { type: string, format: uuid }
         expiresAt: { type: string, format: date-time }
         status: { type: string, enum: [PENDING, ACCEPTED, EXPIRED] }
+        event: { $ref: "#/components/schemas/Event" }
+        seat: { $ref: "#/components/schemas/Seat" }
+      required: [id, eventId, seatId, expiresAt, status]
+    ClaimedWaitlistOffer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        seatId: { type: string, format: uuid }
+        expiresAt: { type: string, format: date-time }
+        status: { type: string, enum: [PENDING, ACCEPTED, EXPIRED] }
+        bookingId: { type: string, format: uuid }
         event: { $ref: "#/components/schemas/Event" }
         seat: { $ref: "#/components/schemas/Seat" }
       required: [id, eventId, seatId, expiresAt, status]

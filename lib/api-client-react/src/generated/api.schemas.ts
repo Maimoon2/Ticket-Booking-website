@@ -279,6 +279,26 @@ export interface WaitlistEntry {
   offer?: WaitlistOffer;
 }
 
+export type ClaimedWaitlistOfferStatus = typeof ClaimedWaitlistOfferStatus[keyof typeof ClaimedWaitlistOfferStatus];
+
+
+export const ClaimedWaitlistOfferStatus = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  EXPIRED: 'EXPIRED',
+} as const;
+
+export interface ClaimedWaitlistOffer {
+  id: string;
+  eventId: string;
+  seatId: string;
+  expiresAt: string;
+  status: ClaimedWaitlistOfferStatus;
+  bookingId?: string;
+  event?: Event;
+  seat?: Seat;
+}
+
 export interface Analytics {
   totalEvents: number;
   totalBookings: number;
@@ -325,4 +345,14 @@ export const ListEventsCategory = {
   MOVIE: 'MOVIE',
   CONCERT: 'CONCERT',
 } as const;
+
+export type GetOrganiserAnalytics200 = {
+  totalEvents: number;
+  totalBookings: number;
+  revenue: number;
+  occupancy: number;
+  /** Confirmed bookings per weekday (Mon-Sun) over the last 7 days */
+  dailyBookings?: number[];
+  recentBookings: Booking[];
+};
 

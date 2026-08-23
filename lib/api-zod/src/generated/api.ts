@@ -543,6 +543,13 @@ export const JoinWaitlistResponse = zod.object({
 })
 
 
+export const LeaveWaitlistParams = zod.object({
+  "id": zod.uuid()
+})
+
+export const LeaveWaitlistResponse = zod.void()
+
+
 export const ListWaitlistOffersResponseItem = zod.object({
   "id": zod.uuid(),
   "eventId": zod.uuid(),
@@ -589,6 +596,7 @@ export const ClaimWaitlistOfferResponse = zod.object({
   "seatId": zod.uuid(),
   "expiresAt": zod.coerce.date(),
   "status": zod.enum(['PENDING', 'ACCEPTED', 'EXPIRED']),
+  "bookingId": zod.uuid().optional(),
   "event": zod.object({
   "id": zod.uuid(),
   "title": zod.string(),
@@ -615,6 +623,55 @@ export const ClaimWaitlistOfferResponse = zod.object({
   "category": zod.enum(['PREMIUM', 'STANDARD']),
   "price": zod.number()
 }).optional()
+})
+
+
+export const GetOrganiserAnalyticsResponse = zod.object({
+  "totalEvents": zod.int(),
+  "totalBookings": zod.int(),
+  "revenue": zod.number(),
+  "occupancy": zod.number(),
+  "dailyBookings": zod.array(zod.int()).optional().describe('Confirmed bookings per weekday (Mon-Sun) over the last 7 days'),
+  "recentBookings": zod.array(zod.object({
+  "id": zod.uuid(),
+  "reference": zod.string(),
+  "status": zod.enum(['CONFIRMED', 'CANCELLED']),
+  "total": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "customer": zod.object({
+  "id": zod.uuid(),
+  "name": zod.string(),
+  "email": zod.email(),
+  "role": zod.enum(['CUSTOMER', 'ORGANISER', 'ADMIN'])
+}).optional(),
+  "event": zod.object({
+  "id": zod.uuid(),
+  "title": zod.string(),
+  "category": zod.enum(['MOVIE', 'CONCERT']),
+  "description": zod.string(),
+  "imageUrl": zod.string().nullish(),
+  "startsAt": zod.coerce.date(),
+  "venue": zod.object({
+  "id": zod.uuid(),
+  "name": zod.string(),
+  "address": zod.string(),
+  "city": zod.string(),
+  "capacity": zod.int(),
+  "seatCount": zod.int()
+}),
+  "minPrice": zod.number(),
+  "availableSeats": zod.int()
+}),
+  "seats": zod.array(zod.object({
+  "id": zod.uuid(),
+  "label": zod.string(),
+  "row": zod.string(),
+  "number": zod.int(),
+  "category": zod.enum(['PREMIUM', 'STANDARD']),
+  "price": zod.number()
+})),
+  "qrData": zod.string()
+}))
 })
 
 

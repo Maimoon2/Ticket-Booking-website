@@ -16,9 +16,9 @@ Checkout locks the hold and its seat rows, verifies ownership, status, and expir
 
 ## Waitlist offers
 
-Waitlists are ordered by `created_at` per event and category. Cancellation releases each booked seat inside a transaction, then locks the first `WAITING` entry and creates a durable `waitlist_offers` record. The seat is changed to `OFFERED` with `offered_to_waitlist_offer_id`, so it cannot be selected by a normal hold or offered to another customer. The offer has a fifteen-minute expiry and the waitlist row becomes `OFFERED`.
+Waitlists are ordered by `created_at` per event and category. Cancellation releases each booked seat inside a transaction, then locks the first `WAITING` entry and creates a durable `waitlist_offers` record. The seat is changed to `OFFERED` with `offered_to_waitlist_offer_id`, so it cannot be selected by a normal hold or offered to another customer. The offer TTL defaults to fifteen minutes (`WAITLIST_OFFER_MINUTES`) and the waitlist row becomes `OFFERED`.
 
-The expiry sweep locks pending expired offers, marks the offer `EXPIRED`, moves its waitlist row back to `WAITING`, releases only the specifically offered seat, and immediately tries the next eligible entry. Claiming an offer locks the offer and the event seat, verifies both expiry and the offer-to-seat pointer, then creates a confirmed booking and marks the offer `ACCEPTED`. These conditional checks prevent two workers or users from claiming the same seat.
+The expiry sweep locks pending expired offers, marks the offer `EXPIRED`, moves its waitlist row back to `WAITING`, releases only the specifically offered seat, and immediately re-runs the promotion query excluding the customer whose offer just lapsed, so the seat goes to the next person in line rather than bouncing back to the same head-of-queue entry. Claiming an offer locks the offer and the event seat, verifies both expiry and the offer-to-seat pointer, then creates a confirmed booking and marks the offer `ACCEPTED`. These conditional checks prevent two workers or users from claiming the same seat. Every transition (hold, checkout, cancellation, waitlist join, offer created/expired/claimed) is appended to an `audit_events` table for support and debugging.
 
 ## Real-time updates
 

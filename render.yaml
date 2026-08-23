@@ -1,0 +1,32 @@
+# Render.com blueprint: one web service (API + static frontend) and a managed Postgres.
+# Deploy with: Render dashboard -> New -> Blueprint -> point at this repository.
+services:
+  - type: web
+    name: scenepass-web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: scenepass-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: HOLD_TTL_MINUTES
+        value: "10"
+      - key: WAITLIST_OFFER_MINUTES
+        value: "15"
+      - key: HOLD_SWEEP_INTERVAL_MS
+        value: "15000"
+      # Set to the final https://<service>.onrender.com URL after the first deploy,
+      # so waitlist offer emails contain working claim links.
+      - key: APP_URL
+        sync: false
+
+databases:
+  - name: scenepass-db
+    plan: free
+    databaseName: scenepass
+    user: scenepass

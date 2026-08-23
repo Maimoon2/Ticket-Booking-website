@@ -1,3 +1,4 @@
+import path from "node:path";
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
@@ -30,5 +31,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+const staticDir = process.env.STATIC_DIR;
+if (staticDir) {
+  const webRoot = path.resolve(staticDir);
+  app.use(express.static(webRoot));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api")) return next();
+    res.sendFile(path.join(webRoot, "index.html"), (error) => {
+      if (error) next();
+    });
+  });
+  logger.info({ webRoot }, "Serving static frontend");
+}
 
 export default app;

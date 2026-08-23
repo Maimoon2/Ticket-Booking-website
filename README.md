@@ -31,7 +31,7 @@ Demo accounts after seeding:
 
 ## Environment variables
 
-`DATABASE_URL` is required. `JWT_SECRET` should be a long random value. `HOLD_TTL_MINUTES` controls checkout holds, defaulting to 10. `HOLD_SWEEP_INTERVAL_MS` controls cleanup frequency. `APP_URL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` enable email delivery. Never commit a populated `.env`.
+`DATABASE_URL` is required. `JWT_SECRET` should be a long random value. `HOLD_TTL_MINUTES` controls checkout holds, defaulting to 10. `WAITLIST_OFFER_MINUTES` controls how long a waitlist offer stays claimable, defaulting to 15. `HOLD_SWEEP_INTERVAL_MS` controls cleanup frequency. `APP_URL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` enable email delivery. `STATIC_DIR` optionally points at the built web app so the API server can serve it in production. Never commit a populated `.env`.
 
 ## API
 
@@ -43,8 +43,34 @@ The schema includes `users`, `venues`, `seats`, `events`, `event_seats`, `seat_h
 
 ## Testing
 
-Run `pnpm --filter @workspace/api-server run test` for the integration test. Set `TEST_API_URL` to the API base URL with seeded data to execute the concurrent-hold assertion; without it the test is safely skipped. Run `pnpm run typecheck` for the workspace typecheck.
+Run `pnpm --filter @workspace/api-server run test` for the integration suite. Tests are skipped unless `TEST_API_URL` points at a running, seeded API, so a plain checkout never fails.
+
+To exercise the full suite (including hold-TTL auto-release and waitlist offer expiry) start the API against a disposable database with short timers:
+
+```
+HOLD_TTL_MINUTES=0.05 WAITLIST_OFFER_MINUTES=0.1 HOLD_SWEEP_INTERVAL_MS=2000 \
+DATABASE_URL=postgres://... pnpm --filter @workspace/api-server run start
+TEST_API_URL=http://localhost:3000/api pnpm --filter @workspace/api-server run test
+```
+
+The suite covers: one winner under concurrent holds for the same seat; auto-release of expired holds; sell-out → waitlist join → cancellation-triggered offer → claim → confirmed booking; and an unclaimed offer expiring and passing the seat to the next customer in line. Run `pnpm run typecheck` for the workspace typecheck.
 
 ## Deployment
 
-Use Replit's Publish flow after setting production database and SMTP/JWT environment variables. The artifact workflows already bind to the platform-provided ports and base paths; no localhost URL is embedded in the application.
+### Docker (any host)
+
+The root `Dockerfile` builds both bundles and produces a single image that serves the API and the web app from one origin. Schema setup is a one-off against the production database:
+
+```
+docker build -t scenepass .
+DATABASE_URL=postgres://... pnpm --filter @workspace/db run push   # one-off schema push
+docker run -p 3000:3000 -e DATABASE_URL=... -e JWT_SECRET=... -e APP_URL=https://your-host scenepass
+```
+
+### Render (blueprint included)
+
+`render.yaml` provisions a free Postgres and a Docker web service wired to it via `DATABASE_URL`, with `JWT_SECRET` auto-generated. Deploy from the Render dashboard with "New -> Blueprint". After the first deploy set `APP_URL` to the service URL so waitlist offer emails contain working claim links, then run `pnpm --filter @workspace/db run push` once locally with the rendered connection string to create tables.
+
+### Replit
+
+Use Replit's Publish flow after setting production database and SMTP/JWT environment variables. The artifact workflows already bind to the platform-provided ports and base paths.

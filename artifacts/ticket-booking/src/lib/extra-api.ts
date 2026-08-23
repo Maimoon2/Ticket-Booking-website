@@ -1,5 +1,4 @@
-import { customFetch, type Analytics, type Hold } from "@workspace/api-client-react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import type { Hold, ClaimedWaitlistOffer } from "@workspace/api-client-react";
 
 export type PricedEvent = {
   premiumPrice?: number;
@@ -10,23 +9,13 @@ export type PricedEvent = {
 
 export type HoldWithLabels = Hold & { seatLabels?: string[] };
 
-export type ClaimedOffer = {
-  id: string;
-  bookingId?: string;
-  status: string;
+export type ClaimedOffer = ClaimedWaitlistOffer;
+
+export type OrganiserAnalytics = {
+  totalEvents: number;
+  totalBookings: number;
+  revenue: number;
+  occupancy: number;
+  dailyBookings?: number[];
+  recentBookings: unknown[];
 };
-
-export type OrganiserAnalytics = Analytics & { dailyBookings?: number[] };
-
-export function useOrganiserAnalytics() {
-  return useQuery({
-    queryKey: ["/api/organiser/analytics"],
-    queryFn: () => customFetch<OrganiserAnalytics>("/api/organiser/analytics", { method: "GET" }),
-  });
-}
-
-export function useLeaveWaitlist() {
-  return useMutation({
-    mutationFn: ({ id }: { id: string }) => customFetch<void>(`/api/waitlist/${id}`, { method: "DELETE" }),
-  });
-}

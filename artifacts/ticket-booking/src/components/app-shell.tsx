@@ -2,6 +2,7 @@ import { CalendarDays, ChevronDown, Compass, LayoutDashboard, LogIn, Menu, Music
 import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import { getGetMeQueryKey, getHealthCheckQueryKey, useGetMe, useHealthCheck } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 export function initials(name?: string) {
   return (name ?? 'ScenePass').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
@@ -38,6 +39,7 @@ function SceneLogo() {
 export function AppShell({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
   useHealthCheck({ query: { retry: false, staleTime: 60000, queryKey: getHealthCheckQueryKey() } });
   const meQuery = useGetMe({ query: { retry: false, queryKey: getGetMeQueryKey() } });
   const user = meQuery.data;
@@ -61,13 +63,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           {nav.slice(0, 2).map((item) => <Link key={item.href} href={item.href} data-testid={`link-nav-${item.label.toLowerCase().replaceAll(' ', '-')}`} className={`rounded-lg px-3 py-2 text-sm font-bold transition ${active(item.href) ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>{item.label}</Link>)}
         </nav>
         <div className="hidden items-center gap-3 md:flex">
-          <Link href="/organiser/dashboard" data-testid="link-organiser" className="text-xs font-extrabold uppercase tracking-[.14em] text-muted-foreground transition hover:text-primary">For organisers</Link>
+          {isStaff && <Link href={user.role === 'ADMIN' ? '/admin/dashboard' : '/organiser/dashboard'} data-testid="link-organiser" className="text-xs font-extrabold uppercase tracking-[.14em] text-muted-foreground transition hover:text-primary">{user.role === 'ADMIN' ? 'Admin console' : 'For organisers'}</Link>}
           {user ? <div className="group relative">
             <button data-testid="button-account-menu" className="flex items-center gap-2 rounded-full border border-border bg-card px-2 py-1.5 text-sm font-bold transition hover:border-primary">
               <span className="grid h-7 w-7 place-items-center rounded-full bg-accent text-xs font-extrabold text-accent-foreground">{initials(user.name)}</span><span className="max-w-24 truncate">{user.name.split(' ')[0]}</span><ChevronDown size={14} />
             </button>
             <div className="invisible absolute right-0 top-12 w-52 translate-y-1 rounded-xl border border-border bg-card p-2 opacity-0 shadow-scene transition group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
-              <button onClick={() => { localStorage.removeItem('scenepass_token'); setLocation('/login'); }} data-testid="button-logout" className="w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-muted-foreground hover:bg-muted hover:text-foreground">Sign out</button>
+              <button onClick={() => { localStorage.removeItem('scenepass_token'); queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() }); setLocation('/login'); }} data-testid="button-logout" className="w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-muted-foreground hover:bg-muted hover:text-foreground">Sign out</button>
             </div>
           </div> : <Link href="/login" data-testid="link-login-header" className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-extrabold text-primary-foreground transition hover:-translate-y-0.5"><LogIn size={15} /> Sign in</Link>}
         </div>
@@ -76,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {open && <div className="border-t border-border bg-card p-4 md:hidden">
         {[...nav, ...(isStaff ? staffNav : [])].map((item) => <button key={item.href} onClick={() => go(item.href)} data-testid={`button-mobile-${item.label.toLowerCase().replaceAll(' ', '-')}`} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-bold ${active(item.href) ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground'}`}><item.icon size={17} />{item.label}</button>)}
         {!user && <button onClick={() => go('/login')} data-testid="button-mobile-login" className="mt-2 flex w-full items-center gap-3 rounded-lg bg-primary px-3 py-3 text-left text-sm font-bold text-primary-foreground"><LogIn size={17} />Sign in</button>}
-        {user && <button onClick={() => { localStorage.removeItem('scenepass_token'); go('/login'); }} data-testid="button-mobile-logout" className="mt-2 flex w-full items-center gap-3 rounded-lg border border-border px-3 py-3 text-left text-sm font-bold"><UserRound size={17} />Sign out</button>}
+        {user && <button onClick={() => { localStorage.removeItem('scenepass_token'); queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() }); go('/login'); }} data-testid="button-mobile-logout" className="mt-2 flex w-full items-center gap-3 rounded-lg border border-border px-3 py-3 text-left text-sm font-bold"><UserRound size={17} />Sign out</button>}
       </div>}
     </header>
     {user && isStaff && <div className="border-b border-border/60 bg-secondary text-secondary-foreground">
@@ -89,7 +91,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <footer className="border-t border-border/70 bg-card">
       <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-5 py-8 text-sm text-muted-foreground sm:px-8 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2 font-display font-bold text-foreground"><span className="h-2 w-2 rounded-full bg-primary" /> ScenePass</div>
-        <div className="flex gap-5"><Link href="/events" data-testid="link-footer-events" className="hover:text-primary">Events</Link><Link href="/login" data-testid="link-footer-login" className="hover:text-primary">Account</Link><span>Made for the moments between the lights going down.</span></div>
+        <div className="flex gap-5"><Link href="/events" data-testid="link-footer-events" className="hover:text-primary">Events</Link>{user ? <Link href="/my-bookings" data-testid="link-footer-bookings" className="hover:text-primary">My bookings</Link> : <Link href="/login" data-testid="link-footer-login" className="hover:text-primary">Sign in</Link>}<span>Made for the moments between the lights going down.</span></div>
       </div>
     </footer>
   </div>;

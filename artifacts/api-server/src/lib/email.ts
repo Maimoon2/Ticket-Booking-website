@@ -45,10 +45,11 @@ export async function sendWaitlistOfferEmail(email: string, title: string, offer
     return;
   }
   const base = process.env.APP_URL || "";
+  const minutes = Math.max(1, Math.round((expiresAt.getTime() - Date.now()) / 60_000));
   await transporter.sendMail({
     from: process.env.SMTP_FROM,
     to: email,
     subject: `A seat opened up for ${title}`,
-    html: `<p>A seat is available for <b>${title}</b> for the next 15 minutes.</p><p><a href="${base}/waitlist?offer=${offerId}">Claim your seat</a></p><p>This offer expires at ${expiresAt.toISOString()}.</p>`,
+    html: `<p>A seat is available for <b>${title}</b> for the next ${minutes} minute${minutes === 1 ? "" : "s"}.</p><p><a href="${base}/waitlist?offer=${offerId}">Claim your seat</a></p><p>This offer expires at ${expiresAt.toISOString()}.</p>`,
   });
 }

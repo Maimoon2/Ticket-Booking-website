@@ -1,6 +1,7 @@
 import { Router, type Response } from "express";
 import { pool } from "@workspace/db";
 import { randomBytes } from "node:crypto";
+import { audit } from "../lib/audit";
 import { hashPassword, issueToken, requireAuth, requireRole, verifyPassword, type AuthRequest } from "../lib/auth";
 import { makeQrData, sendTicketEmail } from "../lib/email";
 import { promoteSeat, releaseExpiredHoldsAndOffers, SEAT_PRICE_SQL } from "../lib/inventory";
@@ -229,6 +230,7 @@ router.post("/events/:id/holds", requireAuth, requireRole("CUSTOMER"), async (re
       [hold.rows[0].id, expiresAt, selected.rows.map((r) => r.id)],
     );
     await client.query("COMMIT");
+    void audit("HOLD_CREATED", customer.id, hold.rows[0].id, { eventId: req.params.id, seatIds: selected.rows.map((r) => r.seat_id) });
     return res.status(201).json({
       id: hold.rows[0].id,
       eventId: req.params.id,
@@ -292,6 +294,7 @@ router.post("/holds/:id/checkout", requireAuth, requireRole("CUSTOMER"), async (
     await client.query(`UPDATE event_seats SET status='BOOKED',hold_id=NULL,held_until=NULL WHERE hold_id=$1 AND status='HELD'`, [req.params.id]);
     await client.query(`UPDATE seat_holds SET status='CHECKED_OUT' WHERE id=$1`, [req.params.id]);
     await client.query("COMMIT");
+    void audit("BOOKING_CONFIRMED", customer.id, bookingId, { reference, holdId: req.params.id });
     const qrData = await makeQrData(reference);
     await pool.query(`UPDATE bookings SET qr_data=$1 WHERE id=$2`, [qrData, bookingId]);
     await emailTicket(bookingId);
@@ -335,6 +338,7 @@ router.post("/bookings/:id/cancel", requireAuth, requireRole("CUSTOMER"), async 
       await promoteSeat(client, es);
     }
     await client.query("COMMIT");
+    void audit("BOOKING_CANCELLED", actor.id, String(req.params.id), { releasedSeats: seats.rows.length });
     return res.json(await bookingPayload(String(req.params.id)));
   } catch {
     await client.query("ROLLBACK");
@@ -371,6 +375,7 @@ router.post("/waitlist", requireAuth, requireRole("CUSTOMER"), async (req, res) 
   if (Number(open.rows[0]?.n) > 0) return sendError(res, 409, "This category still has seats. Book from the seat map instead.", "NOT_SOLD_OUT");
   try {
     const result = await pool.query(`INSERT INTO waitlist (event_id,customer_id,category) VALUES ($1,$2,$3) RETURNING id,created_at`, [eventId, actor.id, category]);
+    void audit("WAITLIST_JOINED", actor.id, result.rows[0].id, { eventId, category });
     const row = await pool.query(`${EVENT_SELECT} ${EVENT_FROM} WHERE e.id=$1`, [eventId]);
     const position = await pool.query(
       `SELECT COUNT(*)::int AS n FROM waitlist WHERE event_id=$1 AND category=$2 AND status='WAITING' AND created_at<=$3`,
@@ -469,6 +474,7 @@ router.post("/waitlist/offers/:id/claim", requireAuth, requireRole("CUSTOMER"), 
     await client.query(`UPDATE waitlist_offers SET status='ACCEPTED' WHERE id=$1`, [req.params.id]);
     await client.query(`UPDATE waitlist SET status='FULFILLED' WHERE id=$1`, [offer.rows[0].waitlist_id]);
     await client.query("COMMIT");
+    void audit("WAITLIST_OFFER_CLAIMED", actor.id, String(req.params.id), { bookingId });
     const qrData = await makeQrData(ref);
     await pool.query(`UPDATE bookings SET qr_data=$1 WHERE id=$2`, [qrData, bookingId]);
     await emailTicket(bookingId);
