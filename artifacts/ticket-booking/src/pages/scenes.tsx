@@ -390,7 +390,7 @@ import { Link, useLocation, useParams, useSearch } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetMeQueryKey, getListBookingsQueryKey, getListEventsQueryKey, getListWaitlistOffersQueryKey, getListWaitlistQueryKey, useCheckout, useClaimWaitlistOffer, useCreateEvent, useCreateHold, useCreateVenue, useCreateVenueSeat, useDeleteVenue, useGetAdminDashboard, useGetBooking, useGetEvent, useGetEventAnalytics, useGetEventSeats, useGetHold, useGetOrganiserAnalytics, useGetVenue, useJoinWaitlist, useLeaveWaitlist, useListBookings, useListEvents, useListOrganiserEvents, useListVenues, useListWaitlist, useListWaitlistOffers, useCancelBooking, useUpdateEvent, useUpdateVenue, login, register } from '@workspace/api-client-react';
 import { EventCategory, EventInputCategory, EventSeatStatus, SeatInputCategory, WaitlistInputCategory, type Booking, type Event, type EventInput } from '@workspace/api-client-react';
-import { dateLabel, ErrorNotice, LoadingGrid, money, PageFrame, StatusPill } from '@/components/app-shell';
+import { dateLabel, EmptyState, ErrorNotice, LoadingGrid, money, PageFrame, StatusPill } from '@/components/app-shell';
 import { type ClaimedOffer, type HoldWithLabels, type PricedEvent } from '@/lib/extra-api';
 
 const art = ['art-coral', 'art-lilac', 'art-amber', 'art-mint'];
