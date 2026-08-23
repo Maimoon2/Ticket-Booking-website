@@ -2,7 +2,8 @@ import { Router, type Response } from "express";
 import { pool } from "@workspace/db";
 import { randomBytes } from "node:crypto";
 import { hashPassword, issueToken, requireAuth, requireRole, verifyPassword, type AuthRequest } from "../lib/auth";
-import { makeQrData, sendTicketEmail, sendWaitlistOfferEmail } from "../lib/email";
+import { makeQrData, sendTicketEmail } from "../lib/email";
+import { promoteSeat, releaseExpiredHoldsAndOffers, SEAT_PRICE_SQL } from "../lib/inventory";
 
 const router = Router();
 const holdMinutes = () => Number(process.env.HOLD_TTL_MINUTES || 10);
@@ -26,7 +27,11 @@ const event = (r: any) => ({
   startsAt: r.starts_at ?? r.startsAt,
   venue: venue(r),
   minPrice: Math.min(money(r.premium_price), money(r.standard_price)),
+  premiumPrice: money(r.premium_price),
+  standardPrice: money(r.standard_price),
   availableSeats: Number(r.available_seats ?? 0),
+  availablePremium: Number(r.available_premium ?? 0),
+  availableStandard: Number(r.available_standard ?? 0),
 });
 const seat = (r: any) => ({
   id: r.seat_id ?? r.id,
@@ -37,18 +42,19 @@ const seat = (r: any) => ({
   price: money(r.price),
 });
 
+const EVENT_FROM = `FROM events e JOIN venues v ON v.id=e.venue_id`;
+const EVENT_SELECT = `SELECT e.*, v.name venue_name,v.address venue_address,v.city venue_city,v.capacity,
+  (SELECT COUNT(*) FROM seats s WHERE s.venue_id=e.venue_id) seat_count,
+  (SELECT COUNT(*) FROM event_seats es WHERE es.event_id=e.id AND es.status='AVAILABLE') available_seats,
+  (SELECT COUNT(*) FROM event_seats es JOIN seats s ON s.id=es.seat_id WHERE es.event_id=e.id AND es.status='AVAILABLE' AND s.category='PREMIUM') available_premium,
+  (SELECT COUNT(*) FROM event_seats es JOIN seats s ON s.id=es.seat_id WHERE es.event_id=e.id AND es.status='AVAILABLE' AND s.category='STANDARD') available_standard`;
+
 function sendError(res: Response, status: number, error: string, code?: string) {
   return res.status(status).json({ error, ...(code ? { code } : {}) });
 }
 
 async function eventById(id: string) {
-  const result = await pool.query(
-    `SELECT e.*, v.name venue_name,v.address venue_address,v.city venue_city,v.capacity,
-       (SELECT COUNT(*) FROM seats s WHERE s.venue_id=e.venue_id) seat_count,
-       (SELECT COUNT(*) FROM event_seats es WHERE es.event_id=e.id AND es.status='AVAILABLE') available_seats
-     FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.id=$1`,
-    [id],
-  );
+  const result = await pool.query(`${EVENT_SELECT} ${EVENT_FROM} WHERE e.id=$1`, [id]);
   return result.rows[0];
 }
 
@@ -65,7 +71,7 @@ async function bookingPayload(id: string) {
   const row = result.rows[0];
   if (!row) return null;
   const seats = await pool.query(
-    `SELECT s.* FROM booking_seats bs JOIN event_seats es ON es.id=bs.event_seat_id JOIN seats s ON s.id=es.seat_id
+    `SELECT s.*, bs.price FROM booking_seats bs JOIN event_seats es ON es.id=bs.event_seat_id JOIN seats s ON s.id=es.seat_id
      WHERE bs.booking_id=$1 ORDER BY s.row,s.number`,
     [id],
   );
@@ -82,26 +88,19 @@ async function bookingPayload(id: string) {
   };
 }
 
-async function promoteSeat(client: any, eventSeat: any) {
-  const result = await client.query(
-    `SELECT w.*,u.email,e.title FROM waitlist w JOIN users u ON u.id=w.customer_id JOIN events e ON e.id=w.event_id
-     WHERE w.event_id=$1 AND w.category=(SELECT category FROM seats WHERE id=$2) AND w.status='WAITING'
-     ORDER BY w.created_at FOR UPDATE SKIP LOCKED LIMIT 1`,
-    [eventSeat.event_id, eventSeat.seat_id],
-  );
-  const next = result.rows[0];
-  if (!next) return;
-  const offer = await client.query(
-    `INSERT INTO waitlist_offers (waitlist_id,event_id,seat_id,expires_at,status)
-     VALUES ($1,$2,$3,NOW()+INTERVAL '15 minutes','PENDING') RETURNING id,expires_at`,
-    [next.id, eventSeat.event_id, eventSeat.seat_id],
-  );
-  await client.query(`UPDATE waitlist SET status='OFFERED' WHERE id=$1`, [next.id]);
-  await client.query(
-    `UPDATE event_seats SET status='OFFERED',offered_to_waitlist_offer_id=$1,held_until=$2 WHERE id=$3 AND status='AVAILABLE'`,
-    [offer.rows[0].id, offer.rows[0].expires_at, eventSeat.id],
-  );
-  void sendWaitlistOfferEmail(next.email, next.title, offer.rows[0].id, offer.rows[0].expires_at);
+async function emailTicket(bookingId: string) {
+  const payload = await bookingPayload(bookingId);
+  if (!payload) return;
+  void sendTicketEmail({
+    email: payload.customer.email,
+    name: payload.customer.name,
+    reference: payload.reference,
+    title: payload.event.title,
+    venue: payload.event.venue.name,
+    startsAt: new Date(payload.event.startsAt).toLocaleString(),
+    seats: payload.seats.map((s: any) => s.label),
+    qrData: payload.qrData,
+  });
 }
 
 router.post("/auth/register", async (req, res) => {
@@ -136,11 +135,8 @@ router.get("/events", async (req, res) => {
   const category = req.query.category === "MOVIE" || req.query.category === "CONCERT" ? req.query.category : null;
   const date = String(req.query.date || "").trim();
   const result = await pool.query(
-    `SELECT e.*,v.name venue_name,v.address venue_address,v.city venue_city,v.capacity,
-      (SELECT COUNT(*) FROM seats s WHERE s.venue_id=e.venue_id) seat_count,
-      (SELECT COUNT(*) FROM event_seats es WHERE es.event_id=e.id AND es.status='AVAILABLE') available_seats
-     FROM events e JOIN venues v ON v.id=e.venue_id
-     WHERE e.starts_at > NOW() AND ($1='' OR e.title ILIKE '%'||$1||'%' OR e.description ILIKE '%'||$1||'%')
+    `${EVENT_SELECT} ${EVENT_FROM}
+     WHERE e.starts_at > NOW() AND ($1='' OR e.title ILIKE '%'||$1||'%' OR e.description ILIKE '%'||$1||'%' OR v.name ILIKE '%'||$1||'%' OR v.city ILIKE '%'||$1||'%')
        AND ($2::event_category IS NULL OR e.category=$2) AND ($3='' OR e.starts_at::date=$3::date)
      ORDER BY e.starts_at`,
     [q, category, date],
@@ -167,10 +163,7 @@ router.post("/events", requireAuth, requireRole("ORGANISER", "ADMIN"), async (re
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [actor.id, venueId, title, category, description, imageUrl || null, startsAt, Number(premiumPrice || 0), Number(standardPrice || 0)],
     );
-    await client.query(
-      `INSERT INTO event_seats (event_id,seat_id) SELECT $1,id FROM seats WHERE venue_id=$2`,
-      [created.rows[0].id, venueId],
-    );
+    await client.query(`INSERT INTO event_seats (event_id,seat_id) SELECT $1,id FROM seats WHERE venue_id=$2`, [created.rows[0].id, venueId]);
     await client.query("COMMIT");
     const row = await eventById(created.rows[0].id);
     return res.status(201).json(event(row));
@@ -189,7 +182,7 @@ router.patch("/events/:id", requireAuth, requireRole("ORGANISER", "ADMIN"), asyn
   if (!current.rows[0]) return sendError(res, 404, "Event not found");
   if (actor.role !== "ADMIN" && current.rows[0].organiser_id !== actor.id) return sendError(res, 403, "You can only edit your own events");
   const b = req.body || {};
-  const updated = await pool.query(
+  await pool.query(
     `UPDATE events SET title=COALESCE($1,title),description=COALESCE($2,description),starts_at=COALESCE($3,starts_at),
       premium_price=COALESCE($4,premium_price),standard_price=COALESCE($5,standard_price) WHERE id=$6`,
     [b.title || null, b.description || null, b.startsAt || null, b.premiumPrice == null ? null : Number(b.premiumPrice), b.standardPrice == null ? null : Number(b.standardPrice), req.params.id],
@@ -198,12 +191,14 @@ router.patch("/events/:id", requireAuth, requireRole("ORGANISER", "ADMIN"), asyn
 });
 
 router.get("/events/:id/seats", async (req, res) => {
-  await pool.query(`UPDATE event_seats SET status='AVAILABLE',hold_id=NULL,held_until=NULL WHERE event_id=$1 AND status='HELD' AND held_until<=NOW()`, [req.params.id]);
+  await releaseExpiredHoldsAndOffers(req.params.id);
   const result = await pool.query(
-    `SELECT es.id event_seat_id,es.status,es.held_until,s.* FROM event_seats es JOIN seats s ON s.id=es.seat_id WHERE es.event_id=$1 ORDER BY s.row,s.number`,
+    `SELECT es.id event_seat_id,es.status,es.held_until,s.id,s.row,s.number,s.category,${SEAT_PRICE_SQL} AS price
+     FROM event_seats es JOIN seats s ON s.id=es.seat_id JOIN events e ON e.id=es.event_id
+     WHERE es.event_id=$1 ORDER BY s.row,s.number`,
     [req.params.id],
   );
-  return res.json(result.rows.map((r) => ({ ...seat(r), eventSeatId: r.event_seat_id, status: r.status, heldUntil: r.held_until })));
+  return res.json(result.rows.map((r) => ({ ...seat({ ...r, seat_id: r.id }), eventSeatId: r.event_seat_id, status: r.status, heldUntil: r.held_until })));
 });
 
 router.post("/events/:id/holds", requireAuth, requireRole("CUSTOMER"), async (req, res) => {
@@ -215,7 +210,9 @@ router.post("/events/:id/holds", requireAuth, requireRole("CUSTOMER"), async (re
     await client.query("BEGIN");
     await client.query(`UPDATE event_seats SET status='AVAILABLE',hold_id=NULL,held_until=NULL WHERE event_id=$1 AND status='HELD' AND held_until<=NOW()`, [req.params.id]);
     const selected = await client.query(
-      `SELECT es.*,s.price FROM event_seats es JOIN seats s ON s.id=es.seat_id WHERE es.event_id=$1 AND es.seat_id=ANY($2::uuid[]) FOR UPDATE`,
+      `SELECT es.*,s.row,s.number,s.category,${SEAT_PRICE_SQL} AS price
+       FROM event_seats es JOIN seats s ON s.id=es.seat_id JOIN events e ON e.id=es.event_id
+       WHERE es.event_id=$1 AND es.seat_id=ANY($2::uuid[]) FOR UPDATE`,
       [req.params.id, ids],
     );
     if (selected.rows.length !== ids.length || selected.rows.some((r) => r.status !== "AVAILABLE")) {
@@ -232,7 +229,14 @@ router.post("/events/:id/holds", requireAuth, requireRole("CUSTOMER"), async (re
       [hold.rows[0].id, expiresAt, selected.rows.map((r) => r.id)],
     );
     await client.query("COMMIT");
-    return res.status(201).json({ id: hold.rows[0].id, eventId: req.params.id, seatIds: selected.rows.map((r) => r.seat_id), expiresAt: hold.rows[0].expires_at, total: selected.rows.reduce((sum, r) => sum + money(r.price), 0) });
+    return res.status(201).json({
+      id: hold.rows[0].id,
+      eventId: req.params.id,
+      seatIds: selected.rows.map((r) => r.seat_id),
+      seatLabels: selected.rows.map((r) => `${r.row}${r.number}`),
+      expiresAt: hold.rows[0].expires_at,
+      total: selected.rows.reduce((sum, r) => sum + money(r.price), 0),
+    });
   } catch {
     await client.query("ROLLBACK");
     return sendError(res, 409, "Seats could not be held; please refresh and try again", "SEAT_CONFLICT");
@@ -243,10 +247,23 @@ router.post("/events/:id/holds", requireAuth, requireRole("CUSTOMER"), async (re
 
 router.get("/holds/:id", requireAuth, requireRole("CUSTOMER"), async (req, res) => {
   const customer = (req as AuthRequest).user!;
-  const hold = await pool.query(`SELECT h.*,COALESCE(SUM(s.price),0) total,ARRAY_AGG(es.seat_id) seat_ids FROM seat_holds h JOIN event_seats es ON es.hold_id=h.id JOIN seats s ON s.id=es.seat_id WHERE h.id=$1 AND h.customer_id=$2 GROUP BY h.id`, [req.params.id, customer.id]);
+  const hold = await pool.query(
+    `SELECT h.*,COALESCE(SUM(${SEAT_PRICE_SQL}),0) total,ARRAY_AGG(es.seat_id) seat_ids,
+            ARRAY_AGG(s.row || s.number::text) seat_labels
+     FROM seat_holds h JOIN event_seats es ON es.hold_id=h.id JOIN seats s ON s.id=es.seat_id JOIN events e ON e.id=h.event_id
+     WHERE h.id=$1 AND h.customer_id=$2 GROUP BY h.id`,
+    [req.params.id, customer.id],
+  );
   if (!hold.rows[0]) return sendError(res, 404, "Hold not found");
   if (hold.rows[0].status !== "HELD" || new Date(hold.rows[0].expires_at) <= new Date()) return sendError(res, 410, "This seat hold has expired");
-  return res.json({ id: hold.rows[0].id, eventId: hold.rows[0].event_id, seatIds: hold.rows[0].seat_ids, expiresAt: hold.rows[0].expires_at, total: money(hold.rows[0].total) });
+  return res.json({
+    id: hold.rows[0].id,
+    eventId: hold.rows[0].event_id,
+    seatIds: hold.rows[0].seat_ids,
+    seatLabels: hold.rows[0].seat_labels,
+    expiresAt: hold.rows[0].expires_at,
+    total: money(hold.rows[0].total),
+  });
 });
 
 router.post("/holds/:id/checkout", requireAuth, requireRole("CUSTOMER"), async (req, res) => {
@@ -258,7 +275,11 @@ router.post("/holds/:id/checkout", requireAuth, requireRole("CUSTOMER"), async (
     const hold = await client.query(`SELECT * FROM seat_holds WHERE id=$1 AND customer_id=$2 FOR UPDATE`, [req.params.id, customer.id]);
     if (!hold.rows[0]) { await client.query("ROLLBACK"); return sendError(res, 404, "Hold not found"); }
     if (hold.rows[0].status !== "HELD" || new Date(hold.rows[0].expires_at) <= new Date()) { await client.query("ROLLBACK"); return sendError(res, 410, "Your checkout hold has expired"); }
-    const held = await client.query(`SELECT es.*,s.price FROM event_seats es JOIN seats s ON s.id=es.seat_id WHERE es.hold_id=$1 AND es.status='HELD' FOR UPDATE`, [req.params.id]);
+    const held = await client.query(
+      `SELECT es.*,${SEAT_PRICE_SQL} AS price FROM event_seats es JOIN seats s ON s.id=es.seat_id JOIN events e ON e.id=es.event_id
+       WHERE es.hold_id=$1 AND es.status='HELD' FOR UPDATE`,
+      [req.params.id],
+    );
     if (!held.rows.length) { await client.query("ROLLBACK"); return sendError(res, 409, "These seats are no longer held"); }
     const total = held.rows.reduce((sum, r) => sum + money(r.price), 0);
     const reference = `SP-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
@@ -273,8 +294,8 @@ router.post("/holds/:id/checkout", requireAuth, requireRole("CUSTOMER"), async (
     await client.query("COMMIT");
     const qrData = await makeQrData(reference);
     await pool.query(`UPDATE bookings SET qr_data=$1 WHERE id=$2`, [qrData, bookingId]);
+    await emailTicket(bookingId);
     const payload = await bookingPayload(bookingId);
-    if (payload) void sendTicketEmail({ email: payload.customer.email, name: payload.customer.name, reference, title: payload.event.title, venue: payload.event.venue.name, startsAt: new Date(payload.event.startsAt).toLocaleString(), seats: payload.seats.map((s: any) => s.label), qrData });
     return res.status(201).json({ ...payload, qrData });
   } catch {
     await client.query("ROLLBACK");
@@ -329,9 +350,9 @@ router.get("/waitlist", requireAuth, requireRole("CUSTOMER"), async (req, res) =
     `SELECT w.*,e.title,e.category,e.description,e.starts_at,e.image_url,e.premium_price,e.standard_price,e.venue_id,
        v.name venue_name,v.address venue_address,v.city venue_city,v.capacity,
        (SELECT COUNT(*) FROM seats s WHERE s.venue_id=v.id) seat_count,
-       (SELECT COUNT(*) FROM waitlist w2 WHERE w2.event_id=w.event_id AND w2.category=w.category AND w2.status='WAITING' AND w2.created_at<=w.created_at) position
+       (SELECT COUNT(*) FROM waitlist w2 WHERE w2.event_id=w.event_id AND w2.category=w.category AND w2.status IN ('WAITING','OFFERED') AND w2.created_at<=w.created_at) position
      FROM waitlist w JOIN events e ON e.id=w.event_id JOIN venues v ON v.id=e.venue_id
-     WHERE w.customer_id=$1 ORDER BY w.created_at DESC`,
+     WHERE w.customer_id=$1 AND w.status<>'REMOVED' ORDER BY w.created_at DESC`,
     [actor.id],
   );
   return res.json(result.rows.map((r) => ({ id: r.id, event: event(r), category: r.category, position: Number(r.position), status: r.status })));
@@ -341,32 +362,91 @@ router.post("/waitlist", requireAuth, requireRole("CUSTOMER"), async (req, res) 
   const actor = (req as AuthRequest).user!;
   const { eventId, category } = req.body || {};
   if (!eventId || !["PREMIUM", "STANDARD"].includes(category)) return sendError(res, 400, "Event and seat category are required");
+  await releaseExpiredHoldsAndOffers(eventId);
+  const open = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM event_seats es JOIN seats s ON s.id=es.seat_id
+     WHERE es.event_id=$1 AND s.category=$2 AND es.status='AVAILABLE'`,
+    [eventId, category],
+  );
+  if (Number(open.rows[0]?.n) > 0) return sendError(res, 409, "This category still has seats. Book from the seat map instead.", "NOT_SOLD_OUT");
   try {
     const result = await pool.query(`INSERT INTO waitlist (event_id,customer_id,category) VALUES ($1,$2,$3) RETURNING id,created_at`, [eventId, actor.id, category]);
-    const row = await pool.query(`SELECT e.*,v.name venue_name,v.address venue_address,v.city venue_city,v.capacity,(SELECT COUNT(*) FROM seats s WHERE s.venue_id=v.id) seat_count FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.id=$1`, [eventId]);
-    return res.status(201).json({ id: result.rows[0].id, event: event(row.rows[0]), category, position: 1, status: "WAITING" });
+    const row = await pool.query(`${EVENT_SELECT} ${EVENT_FROM} WHERE e.id=$1`, [eventId]);
+    const position = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM waitlist WHERE event_id=$1 AND category=$2 AND status='WAITING' AND created_at<=$3`,
+      [eventId, category, result.rows[0].created_at],
+    );
+    return res.status(201).json({ id: result.rows[0].id, event: event(row.rows[0]), category, position: Number(position.rows[0].n), status: "WAITING" });
   } catch (error: any) {
     if (error?.code === "23505") return sendError(res, 409, "You are already on this waitlist");
     return sendError(res, 404, "Event not found");
   }
 });
 
+router.delete("/waitlist/:id", requireAuth, requireRole("CUSTOMER"), async (req, res) => {
+  const actor = (req as AuthRequest).user!;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const entry = await client.query(`SELECT * FROM waitlist WHERE id=$1 AND customer_id=$2 FOR UPDATE`, [req.params.id, actor.id]);
+    if (!entry.rows[0]) { await client.query("ROLLBACK"); return sendError(res, 404, "Waitlist entry not found"); }
+    if (entry.rows[0].status === "FULFILLED" || entry.rows[0].status === "REMOVED") {
+      await client.query("ROLLBACK");
+      return sendError(res, 409, "This waitlist entry cannot be removed");
+    }
+    if (entry.rows[0].status === "OFFERED") {
+      const offer = await client.query(
+        `SELECT wo.*, es.id AS event_seat_id FROM waitlist_offers wo JOIN event_seats es ON es.offered_to_waitlist_offer_id=wo.id
+         WHERE wo.waitlist_id=$1 AND wo.status='PENDING' FOR UPDATE`,
+        [req.params.id],
+      );
+      if (offer.rows[0]) {
+        await client.query(`UPDATE waitlist_offers SET status='EXPIRED' WHERE id=$1`, [offer.rows[0].id]);
+        await client.query(
+          `UPDATE event_seats SET status='AVAILABLE',offered_to_waitlist_offer_id=NULL,held_until=NULL WHERE id=$1`,
+          [offer.rows[0].event_seat_id],
+        );
+        const seatRow = await client.query(`SELECT * FROM event_seats WHERE id=$1 AND status='AVAILABLE' FOR UPDATE`, [offer.rows[0].event_seat_id]);
+        if (seatRow.rows[0]) await promoteSeat(client, seatRow.rows[0]);
+      }
+    }
+    await client.query(`DELETE FROM waitlist WHERE id=$1`, [req.params.id]);
+    await client.query("COMMIT");
+    return res.status(204).send();
+  } catch {
+    await client.query("ROLLBACK");
+    return sendError(res, 409, "Waitlist entry could not be removed");
+  } finally {
+    client.release();
+  }
+});
+
 router.get("/waitlist/offers", requireAuth, requireRole("CUSTOMER"), async (req, res) => {
   const actor = (req as AuthRequest).user!;
-  await pool.query(`UPDATE waitlist_offers SET status='EXPIRED' WHERE status='PENDING' AND expires_at<=NOW()`);
+  await releaseExpiredHoldsAndOffers();
   const result = await pool.query(
     `SELECT wo.*,e.title,e.category,e.description,e.starts_at,e.image_url,e.premium_price,e.standard_price,e.venue_id,
-       v.name venue_name,v.address venue_address,v.city venue_city,v.capacity,s.row,s.number,s.category seat_category,s.price
+       v.name venue_name,v.address venue_address,v.city venue_city,v.capacity,s.row,s.number,s.category seat_category,${SEAT_PRICE_SQL} AS price
      FROM waitlist_offers wo JOIN waitlist w ON w.id=wo.waitlist_id JOIN events e ON e.id=wo.event_id JOIN venues v ON v.id=e.venue_id JOIN seats s ON s.id=wo.seat_id
      WHERE w.customer_id=$1 ORDER BY wo.created_at DESC`,
     [actor.id],
   );
-  return res.json(result.rows.map((r) => ({ id: r.id, eventId: r.event_id, seatId: r.seat_id, expiresAt: r.expires_at, status: r.status, event: event(r), seat: { id: r.seat_id, label: `${r.row}${r.number}`, row: r.row, number: Number(r.number), category: r.seat_category, price: money(r.price) } })));
+  return res.json(result.rows.map((r) => ({
+    id: r.id,
+    eventId: r.event_id,
+    seatId: r.seat_id,
+    expiresAt: r.expires_at,
+    status: r.status,
+    event: event(r),
+    seat: { id: r.seat_id, label: `${r.row}${r.number}`, row: r.row, number: Number(r.number), category: r.seat_category, price: money(r.price) },
+  })));
 });
 
 router.post("/waitlist/offers/:id/claim", requireAuth, requireRole("CUSTOMER"), async (req, res) => {
   const actor = (req as AuthRequest).user!;
   const client = await pool.connect();
+  let bookingId = "";
+  let ref = "";
   try {
     await client.query("BEGIN");
     const offer = await client.query(
@@ -375,18 +455,31 @@ router.post("/waitlist/offers/:id/claim", requireAuth, requireRole("CUSTOMER"), 
     );
     if (!offer.rows[0] || offer.rows[0].customer_id !== actor.id) { await client.query("ROLLBACK"); return sendError(res, 404, "Offer not found"); }
     if (offer.rows[0].status !== "PENDING" || new Date(offer.rows[0].expires_at) <= new Date()) { await client.query("ROLLBACK"); return sendError(res, 410, "This offer has expired"); }
-    const locked = await client.query(`SELECT es.*,s.price FROM event_seats es JOIN seats s ON s.id=es.seat_id WHERE es.event_id=$1 AND es.seat_id=$2 AND es.status='OFFERED' AND es.offered_to_waitlist_offer_id=$3 FOR UPDATE`, [offer.rows[0].event_id, offer.rows[0].seat_id, req.params.id]);
+    const locked = await client.query(
+      `SELECT es.*,${SEAT_PRICE_SQL} AS price FROM event_seats es JOIN seats s ON s.id=es.seat_id JOIN events e ON e.id=es.event_id
+       WHERE es.event_id=$1 AND es.seat_id=$2 AND es.status='OFFERED' AND es.offered_to_waitlist_offer_id=$3 FOR UPDATE`,
+      [offer.rows[0].event_id, offer.rows[0].seat_id, req.params.id],
+    );
     if (!locked.rows[0]) { await client.query("ROLLBACK"); return sendError(res, 410, "That seat is no longer available"); }
-    const ref = `SP-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
+    ref = `SP-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
     const booking = await client.query(`INSERT INTO bookings (reference,event_id,customer_id,status,total) VALUES ($1,$2,$3,'CONFIRMED',$4) RETURNING id`, [ref, offer.rows[0].event_id, actor.id, locked.rows[0].price]);
-    await client.query(`INSERT INTO booking_seats (booking_id,event_seat_id,price) VALUES ($1,$2,$3)`, [booking.rows[0].id, locked.rows[0].id, locked.rows[0].price]);
+    bookingId = booking.rows[0].id;
+    await client.query(`INSERT INTO booking_seats (booking_id,event_seat_id,price) VALUES ($1,$2,$3)`, [bookingId, locked.rows[0].id, locked.rows[0].price]);
     await client.query(`UPDATE event_seats SET status='BOOKED',offered_to_waitlist_offer_id=NULL,held_until=NULL WHERE id=$1`, [locked.rows[0].id]);
     await client.query(`UPDATE waitlist_offers SET status='ACCEPTED' WHERE id=$1`, [req.params.id]);
     await client.query(`UPDATE waitlist SET status='FULFILLED' WHERE id=$1`, [offer.rows[0].waitlist_id]);
     await client.query("COMMIT");
     const qrData = await makeQrData(ref);
-    await pool.query(`UPDATE bookings SET qr_data=$1 WHERE id=$2`, [qrData, booking.rows[0].id]);
-    return res.json({ id: req.params.id, eventId: offer.rows[0].event_id, seatId: offer.rows[0].seat_id, expiresAt: offer.rows[0].expires_at, status: "ACCEPTED" });
+    await pool.query(`UPDATE bookings SET qr_data=$1 WHERE id=$2`, [qrData, bookingId]);
+    await emailTicket(bookingId);
+    return res.json({
+      id: req.params.id,
+      eventId: offer.rows[0].event_id,
+      seatId: offer.rows[0].seat_id,
+      expiresAt: offer.rows[0].expires_at,
+      status: "ACCEPTED",
+      bookingId,
+    });
   } catch {
     await client.query("ROLLBACK");
     return sendError(res, 409, "Offer could not be claimed");
@@ -398,10 +491,48 @@ router.post("/waitlist/offers/:id/claim", requireAuth, requireRole("CUSTOMER"), 
 router.get("/organiser/events", requireAuth, requireRole("ORGANISER", "ADMIN"), async (req, res) => {
   const actor = (req as AuthRequest).user!;
   const result = await pool.query(
-    `SELECT e.*,v.name venue_name,v.address venue_address,v.city venue_city,v.capacity,(SELECT COUNT(*) FROM seats s WHERE s.venue_id=e.venue_id) seat_count,(SELECT COUNT(*) FROM event_seats es WHERE es.event_id=e.id AND es.status='AVAILABLE') available_seats FROM events e JOIN venues v ON v.id=e.venue_id WHERE ($1='ADMIN' OR e.organiser_id=$2) ORDER BY e.starts_at`,
+    `${EVENT_SELECT} ${EVENT_FROM} WHERE ($1='ADMIN' OR e.organiser_id=$2) ORDER BY e.starts_at`,
     [actor.role, actor.id],
   );
   return res.json(result.rows.map(event));
+});
+
+router.get("/organiser/analytics", requireAuth, requireRole("ORGANISER", "ADMIN"), async (req, res) => {
+  const actor = (req as AuthRequest).user!;
+  const scope = actor.role === "ADMIN" ? "" : "AND e.organiser_id=$1";
+  const params = actor.role === "ADMIN" ? [] : [actor.id];
+  const result = await pool.query(
+    `SELECT COUNT(DISTINCT e.id)::int total_events,
+            COUNT(DISTINCT b.id) FILTER (WHERE b.status='CONFIRMED')::int total_bookings,
+            COALESCE(SUM(b.total) FILTER (WHERE b.status='CONFIRMED'),0) revenue,
+            (SELECT COUNT(*) FROM event_seats es JOIN events ev ON ev.id=es.event_id WHERE es.status='BOOKED' ${actor.role === "ADMIN" ? "" : "AND ev.organiser_id=$1"})::float
+              / NULLIF((SELECT COUNT(*) FROM event_seats es JOIN events ev ON ev.id=es.event_id ${actor.role === "ADMIN" ? "" : "WHERE ev.organiser_id=$1"}),0) occupancy
+     FROM events e LEFT JOIN bookings b ON b.event_id=e.id
+     WHERE TRUE ${scope}`,
+    params,
+  );
+  const r = result.rows[0];
+  const recent = await pool.query(
+    `SELECT b.id FROM bookings b JOIN events e ON e.id=b.event_id WHERE ($1='ADMIN' OR e.organiser_id=$2) ORDER BY b.created_at DESC LIMIT 8`,
+    [actor.role, actor.id],
+  );
+  const daily = await pool.query(
+    `SELECT EXTRACT(ISODOW FROM b.created_at)::int dow, COUNT(*)::int n
+     FROM bookings b JOIN events e ON e.id=b.event_id
+     WHERE b.status='CONFIRMED' AND b.created_at > NOW() - INTERVAL '7 days' AND ($1='ADMIN' OR e.organiser_id=$2)
+     GROUP BY 1`,
+    [actor.role, actor.id],
+  );
+  const dailyBookings = [1, 2, 3, 4, 5, 6, 7].map((dow) => daily.rows.find((row) => Number(row.dow) === dow)?.n ?? 0);
+  const recentBookings = (await Promise.all(recent.rows.map((row) => bookingPayload(row.id)))).filter(Boolean);
+  return res.json({
+    totalEvents: Number(r.total_events),
+    totalBookings: Number(r.total_bookings),
+    revenue: money(r.revenue),
+    occupancy: Number(r.occupancy || 0) * 100,
+    recentBookings,
+    dailyBookings,
+  });
 });
 
 router.get("/organiser/events/:id/analytics", requireAuth, requireRole("ORGANISER", "ADMIN"), async (req, res) => {
@@ -410,8 +541,9 @@ router.get("/organiser/events/:id/analytics", requireAuth, requireRole("ORGANISE
   if (!owner.rows[0]) return sendError(res, 404, "Event not found");
   if (actor.role !== "ADMIN" && owner.rows[0].organiser_id !== actor.id) return sendError(res, 403, "You can only view your own events");
   const result = await pool.query(
-    `SELECT COUNT(DISTINCT b.id)::int total_bookings,COALESCE(SUM(b.total) FILTER (WHERE b.status='CONFIRMED'),0) revenue,
-      COUNT(*) FILTER (WHERE b.status='CONFIRMED')::int sold,
+    `SELECT COUNT(DISTINCT b.id) FILTER (WHERE b.status='CONFIRMED')::int total_bookings,
+      COALESCE(SUM(b.total) FILTER (WHERE b.status='CONFIRMED'),0) revenue,
+      (SELECT COUNT(*) FROM event_seats WHERE event_id=$1 AND status='BOOKED')::int sold,
       (SELECT COUNT(*) FROM event_seats WHERE event_id=$1)::int capacity
      FROM bookings b WHERE b.event_id=$1`,
     [req.params.id],
@@ -419,10 +551,16 @@ router.get("/organiser/events/:id/analytics", requireAuth, requireRole("ORGANISE
   const r = result.rows[0];
   const recent = await pool.query(`SELECT id FROM bookings WHERE event_id=$1 ORDER BY created_at DESC LIMIT 5`, [req.params.id]);
   const recentBookings = (await Promise.all(recent.rows.map((row) => bookingPayload(row.id)))).filter(Boolean);
-  return res.json({ totalEvents: 1, totalBookings: Number(r.total_bookings), revenue: money(r.revenue), occupancy: r.capacity ? (Number(r.sold) / Number(r.capacity)) * 100 : 0, recentBookings });
+  return res.json({
+    totalEvents: 1,
+    totalBookings: Number(r.total_bookings),
+    revenue: money(r.revenue),
+    occupancy: r.capacity ? (Number(r.sold) / Number(r.capacity)) * 100 : 0,
+    recentBookings,
+  });
 });
 
-router.get("/venues", requireAuth, requireRole("ADMIN"), async (_req, res) => {
+router.get("/venues", requireAuth, requireRole("ADMIN", "ORGANISER"), async (_req, res) => {
   const result = await pool.query(`SELECT v.*,COUNT(s.id)::int seat_count FROM venues v LEFT JOIN seats s ON s.venue_id=v.id GROUP BY v.id ORDER BY v.name`);
   return res.json(result.rows.map(venue));
 });
