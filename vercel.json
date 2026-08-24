@@ -1,0 +1,10 @@
+{
+  "buildCommand": "pnpm --filter @workspace/ticket-booking run build",
+  "outputDirectory": "artifacts/ticket-booking/dist/public",
+  "installCommand": "pnpm install",
+  "framework": null,
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://ticket-booking-website-vs7e.onrender.com/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
