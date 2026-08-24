@@ -4,12 +4,12 @@ ScenePass is a full-stack movie and concert ticket booking platform built for a 
 
 ## Features
 
-- Customer registration/login, event browsing and filtering, live visual seat map, ten-minute holds, simulated checkout, QR tickets, booking history, cancellations, waitlist entries and offers.
-- Organiser event creation/editing plus event booking, revenue and occupancy analytics.
-- Admin venue CRUD and seat layout management.
-- JWT authentication, bcrypt password hashing, server-side CUSTOMER/ORGANISER/ADMIN RBAC.
-- PostgreSQL row-level locking for race-safe holds; idempotent background hold/offer expiry.
-- Optional Nodemailer SMTP delivery for tickets and waitlist claims. If SMTP is not configured, tickets remain available in-app.
+* Customer registration/login, event browsing and filtering, live visual seat map, ten-minute holds, simulated checkout, QR tickets, booking history, cancellations, waitlist entries and offers.
+* Organiser event creation/editing plus event booking, revenue and occupancy analytics.
+* Admin venue CRUD and seat layout management.
+* JWT authentication, bcrypt password hashing, server-side CUSTOMER/ORGANISER/ADMIN RBAC.
+* PostgreSQL row-level locking for race-safe holds; idempotent background hold/offer expiry.
+* Optional Nodemailer SMTP delivery for tickets and waitlist claims. If SMTP is not configured, tickets remain available in-app.
 
 ## Architecture
 
@@ -25,9 +25,9 @@ ScenePass is a full-stack movie and concert ticket booking platform built for a 
 
 Demo accounts after seeding:
 
-- Admin: `admin@scenepass.demo` / `AdminPass123!`
-- Organiser: `organiser@scenepass.demo` / `OrganiserPass123!`
-- Customer: `customer@scenepass.demo` / `CustomerPass123!`
+* Admin: `admin@scenepass.demo` / `AdminPass123!`
+* Organiser: `organiser@scenepass.demo` / `OrganiserPass123!`
+* Customer: `customer@scenepass.demo` / `CustomerPass123!`
 
 ## Environment variables
 
@@ -56,6 +56,10 @@ TEST_API_URL=http://localhost:3000/api pnpm --filter @workspace/api-server run t
 The suite covers: one winner under concurrent holds for the same seat; auto-release of expired holds; sell-out → waitlist join → cancellation-triggered offer → claim → confirmed booking; and an unclaimed offer expiring and passing the seat to the next customer in line. Run `pnpm run typecheck` for the workspace typecheck.
 
 ## Deployment
+
+### Live Application
+
+**https://ticket-booking-website-ticket-booki.vercel.app**
 
 ### Docker (any host)
 
