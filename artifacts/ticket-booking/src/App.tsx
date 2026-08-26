@@ -20,7 +20,7 @@ function Router() {
     <Route path="/login"><AuthPage mode="login" /></Route>
     <Route path="/register"><AuthPage mode="register" /></Route>
     <Route path="/events" component={EventsPage} />
-    <Route path="/events/:id/seats" component={SeatsPage} />
+    <Route path="/events/:id/seats"><ProtectedRoute allowedRoles={['CUSTOMER']}><SeatsPage /></ProtectedRoute></Route>
     <Route path="/events/:id" component={EventDetailPage} />
     <Route path="/checkout"><ProtectedRoute allowedRoles={['CUSTOMER']}><CheckoutPage /></ProtectedRoute></Route>
     <Route path="/booking/:id"><ProtectedRoute><BookingPage /></ProtectedRoute></Route>

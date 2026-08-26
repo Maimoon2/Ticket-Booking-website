@@ -10,7 +10,7 @@ export function ProtectedRoute({ children, allowedRoles }: { children: ReactNode
 
   if (!hasToken) return <Redirect to={`/login?returnTo=${encodeURIComponent(location)}`} />;
 
-  if (meQuery.isLoading) {
+  if (meQuery.isLoading || (meQuery.isError && meQuery.isFetching)) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
         <div className="text-center">

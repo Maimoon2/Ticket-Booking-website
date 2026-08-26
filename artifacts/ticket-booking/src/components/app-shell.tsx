@@ -69,7 +69,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="grid h-7 w-7 place-items-center rounded-full bg-accent text-xs font-extrabold text-accent-foreground">{initials(user.name)}</span><span className="max-w-24 truncate">{user.name.split(' ')[0]}</span><ChevronDown size={14} />
             </button>
             <div className="invisible absolute right-0 top-12 w-52 translate-y-1 rounded-xl border border-border bg-card p-2 opacity-0 shadow-scene transition group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
-              <button onClick={() => { localStorage.removeItem('scenepass_token'); queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() }); setLocation('/login'); }} data-testid="button-logout" className="w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-muted-foreground hover:bg-muted hover:text-foreground">Sign out</button>
+              <button onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); localStorage.removeItem('scenepass_token'); queryClient.setQueryData(getGetMeQueryKey(), null); window.location.href = '/login'; }} data-testid="button-logout" className="w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-muted-foreground hover:bg-muted hover:text-foreground">Sign out</button>
             </div>
           </div> : <Link href={`/login?returnTo=${encodeURIComponent(location)}`} data-testid="link-login-header" className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-extrabold text-primary-foreground transition hover:-translate-y-0.5"><LogIn size={15} /> Sign in</Link>}
         </div>
@@ -78,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {open && <div className="border-t border-border bg-card p-4 md:hidden">
         {[...nav, ...(isStaff ? staffNav : [])].map((item) => <button key={item.href} onClick={() => go(item.href)} data-testid={`button-mobile-${item.label.toLowerCase().replaceAll(' ', '-')}`} className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-bold ${active(item.href) ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground'}`}><item.icon size={17} />{item.label}</button>)}
         {!user && <button onClick={() => go(`/login?returnTo=${encodeURIComponent(location)}`)} data-testid="button-mobile-login" className="mt-2 flex w-full items-center gap-3 rounded-lg bg-primary px-3 py-3 text-left text-sm font-bold text-primary-foreground"><LogIn size={17} />Sign in</button>}
-        {user && <button onClick={() => { localStorage.removeItem('scenepass_token'); queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() }); go('/login'); }} data-testid="button-mobile-logout" className="mt-2 flex w-full items-center gap-3 rounded-lg border border-border px-3 py-3 text-left text-sm font-bold"><UserRound size={17} />Sign out</button>}
+        {user && <button onClick={() => { localStorage.removeItem('scenepass_token'); queryClient.setQueryData(getGetMeQueryKey(), null); window.location.href = '/login'; }} data-testid="button-mobile-logout" className="mt-2 flex w-full items-center gap-3 rounded-lg border border-border px-3 py-3 text-left text-sm font-bold"><UserRound size={17} />Sign out</button>}
       </div>}
     </header>
     {user && isStaff && <div className="border-b border-border/60 bg-secondary text-secondary-foreground">

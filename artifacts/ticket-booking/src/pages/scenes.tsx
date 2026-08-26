@@ -1,7 +1,8 @@
 import { ArrowLeft, ArrowRight, BarChart3, CalendarDays, Check, ChevronRight, Clock3, Download, Edit3, LayoutGrid, LockKeyhole, MapPin, Music2, Plus, QrCode, Search, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'wouter';
-import { getListEventsQueryKey, useCheckout, useClaimWaitlistOffer, useCreateEvent, useCreateHold, useCreateVenue, useCreateVenueSeat, useDeleteVenue, useGetAdminDashboard, useGetBooking, useGetEvent, useGetEventAnalytics, useGetEventSeats, useGetHold, useGetVenue, useJoinWaitlist, useListBookings, useListEvents, useListOrganiserEvents, useListVenues, useListWaitlist, useListWaitlistOffers, useCancelBooking, useUpdateEvent, useUpdateVenue, login, register, getMe } from '@workspace/api-client-react';
+import { getListEventsQueryKey, getGetMeQueryKey, useCheckout, useClaimWaitlistOffer, useCreateEvent, useCreateHold, useCreateVenue, useCreateVenueSeat, useDeleteVenue, useGetAdminDashboard, useGetBooking, useGetEvent, useGetEventAnalytics, useGetEventSeats, useGetHold, useGetVenue, useJoinWaitlist, useListBookings, useListEvents, useListOrganiserEvents, useListVenues, useListWaitlist, useListWaitlistOffers, useCancelBooking, useUpdateEvent, useUpdateVenue, login, register, getMe } from '@workspace/api-client-react';
 import { EventCategory, EventInputCategory, EventSeatStatus, SeatInputCategory, WaitlistInputCategory, type Booking, type Event, type EventInput } from '@workspace/api-client-react';
 import { dateLabel, ErrorNotice, LoadingGrid, money, PageFrame, StatusPill } from '@/components/app-shell';
 
@@ -240,7 +241,55 @@ export function OrganiserEventDetailPage() {
 export function AdminDashboardPage() {
   const query = useGetAdminDashboard();
   const data = query.data;
-  return <PageFrame eyebrow="Admin console" title="The whole picture." intro="A quiet control room for the platform: supply, demand, and the health of every room.">{query.isLoading ? <div className="grid gap-4 sm:grid-cols-4">{[1, 2, 3, 4].map((item) => <div className="skeleton h-32 rounded-2xl" key={item} />)}</div> : query.isError ? <ErrorNotice error={query.error} onRetry={() => query.refetch()} /> : <><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Stat label="Total events" value={String(data?.totalEvents ?? 0)} /><Stat label="Bookings" value={String(data?.totalBookings ?? 0)} tone="accent" /><Stat label="Revenue" value={money(data?.revenue)} tone="ink" /><Stat label="Occupancy" value={`${data?.occupancy ?? 0}%`} /></div><div className="mt-6 grid gap-6 lg:grid-cols-[1fr_.8fr]"><section className="rounded-2xl border border-border bg-card p-6"><h2 className="font-display text-2xl font-extrabold">Platform bookings</h2><p className="mt-1 text-sm text-muted-foreground">The last seven days across every venue.</p><div className="mt-7"><Bars values={[45, 59, 52, 74, 68, 91, 85]} /></div></section><section className="rounded-2xl bg-secondary p-6 text-secondary-foreground"><h2 className="font-display text-2xl font-extrabold">Recent bookings</h2><div className="mt-5 space-y-4">{(data?.recentBookings ?? []).slice(0, 5).map((booking) => <Link href={`/booking/${booking.id}`} key={booking.id} data-testid={`link-admin-booking-${booking.id}`} className="flex items-center justify-between border-t border-secondary-foreground/15 pt-3 text-sm"><span className="truncate pr-3 font-bold">{booking.event.title}</span><span className="font-mono-scene text-xs text-primary">{money(booking.total)}</span></Link>)}{!data?.recentBookings?.length && <p className="text-sm text-secondary-foreground/60">No bookings to report yet.</p>}</div></section></div></>}</PageFrame>;
+  return <div>
+    <div className="border-b border-border bg-gradient-to-r from-secondary/80 to-background">
+      <div className="mx-auto max-w-[1440px] px-5 py-10 sm:px-8 lg:py-14">
+        <div className="scene-enter">
+          <p className="font-mono-scene text-[11px] font-medium uppercase tracking-[.2em] text-primary">Admin console</p>
+          <h1 className="mt-2 font-display text-4xl font-extrabold leading-[.98] tracking-[-.05em] sm:text-6xl">The whole picture.</h1>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">A quiet control room for the platform: supply, demand, and the health of every room.</p>
+        </div>
+      </div>
+    </div>
+    <div className="mx-auto max-w-[1440px] px-5 py-9 sm:px-8">
+      {query.isLoading ? <div className="grid gap-4 sm:grid-cols-4">{[1, 2, 3, 4].map((item) => <div className="skeleton h-32 rounded-2xl" key={item} />)}</div> : query.isError ? <ErrorNotice error={query.error} onRetry={() => query.refetch()} /> : <>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5"><p className="font-mono-scene text-[10px] uppercase tracking-[.15em] text-primary">Total events</p><p className="mt-3 font-display text-4xl font-extrabold tracking-[-.05em] text-primary">{String(data?.totalEvents ?? 0)}</p></div>
+          <div className="rounded-2xl border border-accent/20 bg-accent/5 p-5"><p className="font-mono-scene text-[10px] uppercase tracking-[.15em] text-accent">Bookings</p><p className="mt-3 font-display text-4xl font-extrabold tracking-[-.05em] text-accent">{String(data?.totalBookings ?? 0)}</p></div>
+          <Stat label="Revenue" value={money(data?.revenue)} tone="ink" />
+          <Stat label="Occupancy" value={`${data?.occupancy ?? 0}%`} />
+        </div>
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_.8fr]">
+          <section className="rounded-2xl border border-border bg-card p-6">
+            <h2 className="font-display text-2xl font-extrabold">Platform bookings</h2>
+            <p className="mt-1 text-sm text-muted-foreground">The last seven days across every venue.</p>
+            <div className="mt-7"><Bars values={[45, 59, 52, 74, 68, 91, 85]} /></div>
+          </section>
+          <section className="rounded-2xl bg-secondary p-6 text-secondary-foreground">
+            <h2 className="font-display text-2xl font-extrabold">Recent bookings</h2>
+            <div className="mt-5 space-y-4">{(data?.recentBookings ?? []).slice(0, 5).map((booking) => <Link href={`/booking/${booking.id}`} key={booking.id} data-testid={`link-admin-booking-${booking.id}`} className="flex items-center justify-between border-t border-secondary-foreground/15 pt-3 text-sm"><span className="truncate pr-3 font-bold">{booking.event.title}</span><span className="font-mono-scene text-xs text-primary">{money(booking.total)}</span></Link>)}{!data?.recentBookings?.length && <p className="text-sm text-secondary-foreground/60">No bookings to report yet.</p>}</div>
+          </section>
+        </div>
+        <div className="mt-6 grid gap-4 sm:grid-cols-3">
+          <Link href="/admin/venues" data-testid="link-admin-manage-venues" className="group rounded-2xl border border-border bg-card p-5 transition hover:border-primary/50">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary"><Music2 size={18} /></div>
+            <h3 className="mt-4 font-display text-lg font-extrabold">Manage venues</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Add rooms, map seats, set capacity.</p>
+          </Link>
+          <Link href="/admin/venues" data-testid="link-admin-all-events" className="group rounded-2xl border border-border bg-card p-5 transition hover:border-primary/50">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent/10 text-accent"><CalendarDays size={18} /></div>
+            <h3 className="mt-4 font-display text-lg font-extrabold">All events</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Browse every event on the platform.</p>
+          </Link>
+          <Link href="/events" data-testid="link-admin-browse" className="group rounded-2xl border border-border bg-card p-5 transition hover:border-primary/50">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-foreground/5 text-foreground"><Sparkles size={18} /></div>
+            <h3 className="mt-4 font-display text-lg font-extrabold">Browse as user</h3>
+            <p className="mt-1 text-xs text-muted-foreground">See the platform from the customer view.</p>
+          </Link>
+        </div>
+      </>}
+    </div>
+  </div>;
 }
 
 export function AdminVenuesPage() {
@@ -290,9 +339,10 @@ export function VenueSeatsPage() {
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'CUSTOMER' });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const submit = async (event: FormEvent) => { event.preventDefault(); setPending(true); setError(null); try { const result = mode === 'login' ? await login({ email: form.email, password: form.password }) : await register({ name: form.name, email: form.email, password: form.password, role: form.role as 'CUSTOMER' | 'ORGANISER' }); localStorage.setItem('scenepass_token', result.token); const params = new URLSearchParams(window.location.search); const returnTo = params.get('returnTo'); if (returnTo) { setLocation(returnTo); } else { const me = await getMe(); const role = me?.role ?? form.role; setLocation(role === 'ADMIN' ? '/admin/dashboard' : role === 'ORGANISER' ? '/organiser/dashboard' : '/events'); } } catch (caught) { setError(caught instanceof Error ? caught : new Error('Unable to authenticate')); } finally { setPending(false); } };
+  const submit = async (event: FormEvent) => { event.preventDefault(); setPending(true); setError(null); try { const result = mode === 'login' ? await login({ email: form.email, password: form.password }) : await register({ name: form.name, email: form.email, password: form.password, role: form.role as 'CUSTOMER' | 'ORGANISER' }); localStorage.setItem('scenepass_token', result.token); await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() }); const params = new URLSearchParams(window.location.search); const returnTo = params.get('returnTo'); if (returnTo) { setLocation(returnTo); } else { const me = await getMe(); const role = me?.role ?? form.role; setLocation(role === 'ADMIN' ? '/admin/dashboard' : role === 'ORGANISER' ? '/organiser/dashboard' : '/events'); } } catch (caught) { setError(caught instanceof Error ? caught : new Error('Unable to authenticate')); } finally { setPending(false); } };
   return <div className="grid min-h-[calc(100dvh-72px)] lg:grid-cols-[.9fr_1.1fr]"><div className="hidden bg-secondary p-12 text-secondary-foreground lg:flex lg:flex-col lg:justify-between"><div><Link href="/" data-testid="link-auth-logo" className="font-display text-2xl font-extrabold">ScenePass</Link><div className="mt-28 max-w-md"><p className="font-mono-scene text-[11px] uppercase tracking-[.2em] text-primary">A little anticipation</p><h1 className="mt-4 font-display text-7xl font-extrabold leading-[.86] tracking-[-.07em]">The best<br />part is<br /><span className="text-primary">almost here.</span></h1></div></div><p className="text-sm text-secondary-foreground/50">Your tickets. Your scenes. One pass.</p></div><div className="flex items-center justify-center px-5 py-12 sm:px-10"><div className="w-full max-w-md scene-enter"><div className="mb-9"><p className="font-mono-scene text-[11px] uppercase tracking-[.2em] text-primary">{mode === 'login' ? 'Welcome back' : 'Join the audience'}</p><h2 className="mt-3 font-display text-5xl font-extrabold leading-none tracking-[-.06em]">{mode === 'login' ? 'Back for more?' : 'Make an entrance.'}</h2><p className="mt-4 text-sm leading-6 text-muted-foreground">{mode === 'login' ? 'Sign in to pick up where you left off.' : 'Create a pass for the nights you want to remember.'}</p></div><form onSubmit={submit} className="space-y-4">{mode === 'register' && <><label className="field">Your name<input required minLength={2} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="input-register-name" placeholder="Alex Rivera" /></label><label className="field">I am joining as<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} data-testid="select-register-role"><option value="CUSTOMER">A customer</option><option value="ORGANISER">An organiser</option></select></label></>}<label className="field">Email<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="input-auth-email" placeholder="you@example.com" /></label><label className="field">Password<input required minLength={8} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="input-auth-password" placeholder="At least 8 characters" /></label>{error && <ErrorNotice error={error} />}{error && <p className="text-xs text-muted-foreground">Check your details and try again.</p>}<button disabled={pending} data-testid="button-submit-auth" className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3.5 text-sm font-extrabold text-primary-foreground disabled:opacity-50">{pending ? 'One moment…' : mode === 'login' ? 'Sign in' : 'Create my pass'} <ArrowRight size={16} /></button></form><p className="mt-7 text-center text-sm text-muted-foreground">{mode === 'login' ? 'New to ScenePass?' : 'Already have a pass?'} <Link href={mode === 'login' ? '/register' : '/login'} data-testid="link-switch-auth" className="font-extrabold text-primary">{mode === 'login' ? 'Create an account' : 'Sign in'}</Link></p></div></div></div>;
 }
