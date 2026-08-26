@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setAuthTokenGetter } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { AppShell } from '@/components/app-shell';
+import { ProtectedRoute } from '@/components/protected-route';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -21,21 +22,21 @@ function Router() {
     <Route path="/events" component={EventsPage} />
     <Route path="/events/:id/seats" component={SeatsPage} />
     <Route path="/events/:id" component={EventDetailPage} />
-    <Route path="/checkout" component={CheckoutPage} />
-    <Route path="/booking/:id" component={BookingPage} />
-    <Route path="/my-bookings" component={MyBookingsPage} />
-    <Route path="/waitlist" component={WaitlistPage} />
-    <Route path="/organiser/dashboard" component={OrganiserDashboardPage} />
-    <Route path="/organiser/events/create"><EventFormPage /></Route>
-    <Route path="/organiser/events/:id/edit"><EventFormPage edit /></Route>
-    <Route path="/organiser/events/:id" component={OrganiserEventDetailPage} />
-    <Route path="/organiser/events" component={OrganiserEventsPage} />
-    <Route path="/admin/dashboard" component={AdminDashboardPage} />
-    <Route path="/admin/venues/create"><VenueFormPage /></Route>
-    <Route path="/admin/venues/:id/edit"><VenueFormPage /></Route>
-    <Route path="/admin/venues/:id/seats" component={VenueSeatsPage} />
-    <Route path="/admin/venues/:id" component={AdminVenueDetailPage} />
-    <Route path="/admin/venues" component={AdminVenuesPage} />
+    <Route path="/checkout"><ProtectedRoute allowedRoles={['CUSTOMER']}><CheckoutPage /></ProtectedRoute></Route>
+    <Route path="/booking/:id"><ProtectedRoute><BookingPage /></ProtectedRoute></Route>
+    <Route path="/my-bookings"><ProtectedRoute allowedRoles={['CUSTOMER']}><MyBookingsPage /></ProtectedRoute></Route>
+    <Route path="/waitlist"><ProtectedRoute allowedRoles={['CUSTOMER']}><WaitlistPage /></ProtectedRoute></Route>
+    <Route path="/organiser/dashboard"><ProtectedRoute allowedRoles={['ORGANISER', 'ADMIN']}><OrganiserDashboardPage /></ProtectedRoute></Route>
+    <Route path="/organiser/events/create"><ProtectedRoute allowedRoles={['ORGANISER', 'ADMIN']}><EventFormPage /></ProtectedRoute></Route>
+    <Route path="/organiser/events/:id/edit"><ProtectedRoute allowedRoles={['ORGANISER', 'ADMIN']}><EventFormPage edit /></ProtectedRoute></Route>
+    <Route path="/organiser/events/:id"><ProtectedRoute allowedRoles={['ORGANISER', 'ADMIN']}><OrganiserEventDetailPage /></ProtectedRoute></Route>
+    <Route path="/organiser/events"><ProtectedRoute allowedRoles={['ORGANISER', 'ADMIN']}><OrganiserEventsPage /></ProtectedRoute></Route>
+    <Route path="/admin/dashboard"><ProtectedRoute allowedRoles={['ADMIN']}><AdminDashboardPage /></ProtectedRoute></Route>
+    <Route path="/admin/venues/create"><ProtectedRoute allowedRoles={['ADMIN']}><VenueFormPage /></ProtectedRoute></Route>
+    <Route path="/admin/venues/:id/edit"><ProtectedRoute allowedRoles={['ADMIN']}><VenueFormPage /></ProtectedRoute></Route>
+    <Route path="/admin/venues/:id/seats"><ProtectedRoute allowedRoles={['ADMIN']}><VenueSeatsPage /></ProtectedRoute></Route>
+    <Route path="/admin/venues/:id"><ProtectedRoute allowedRoles={['ADMIN']}><AdminVenueDetailPage /></ProtectedRoute></Route>
+    <Route path="/admin/venues"><ProtectedRoute allowedRoles={['ADMIN']}><AdminVenuesPage /></ProtectedRoute></Route>
     <Route component={NotFound} />
   </Switch></AppShell></RoutedErrorBoundary>;
 }
