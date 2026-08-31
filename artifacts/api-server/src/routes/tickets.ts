@@ -616,7 +616,67 @@ router.get("/dashboard", requireAuth, requireRole("ADMIN"), async (_req, res) =>
   const r = result.rows[0];
   const recent = await pool.query(`SELECT id FROM bookings ORDER BY created_at DESC LIMIT 5`);
   const recentBookings = (await Promise.all(recent.rows.map((row) => bookingPayload(row.id)))).filter(Boolean);
-  return res.json({ totalEvents: Number(r.total_events), totalBookings: Number(r.total_bookings), revenue: money(r.revenue), occupancy: Number(r.occupancy || 0) * 100, recentBookings });
+  const userCounts = await pool.query(`SELECT role, COUNT(*)::int count FROM users GROUP BY role`);
+  const counts: Record<string, number> = {};
+  for (const row of userCounts.rows) counts[row.role] = Number(row.count);
+  return res.json({ totalEvents: Number(r.total_events), totalBookings: Number(r.total_bookings), revenue: money(r.revenue), occupancy: Number(r.occupancy || 0) * 100, recentBookings, totalOrganisers: counts["ORGANISER"] || 0, totalCustomers: counts["CUSTOMER"] || 0 });
+});
+
+router.get("/admin/users", requireAuth, requireRole("ADMIN"), async (req, res) => {
+  const role = req.query.role as string | undefined;
+  try {
+    let query = `SELECT id, name, email, role, created_at FROM users`;
+    const params: any[] = [];
+    if (role && ["CUSTOMER", "ORGANISER"].includes(role)) {
+      query += ` WHERE role=$1`;
+      params.push(role);
+    }
+    query += ` ORDER BY created_at DESC`;
+    const result = await pool.query(query, params);
+    const users = result.rows.map((r) => ({ id: r.id, name: r.name, email: r.email, role: r.role, createdAt: r.created_at }));
+    return res.json(users);
+  } catch {
+    return sendError(res, 500, "Unable to list users");
+  }
+});
+
+router.get("/admin/users/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
+  try {
+    const userResult = await pool.query(`SELECT id, name, email, role, created_at FROM users WHERE id=$1`, [req.params.id]);
+    if (!userResult.rows[0]) return sendError(res, 404, "User not found");
+    const u = userResult.rows[0];
+    const profile = { id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.created_at };
+    if (u.role === "ORGANISER") {
+      const eventsResult = await pool.query(
+        `${EVENT_SELECT} ${EVENT_FROM} WHERE e.organiser_id=$1 ORDER BY e.created_at DESC`,
+        [u.id],
+      );
+      return res.json({ ...profile, events: eventsResult.rows.map(event) });
+    }
+    if (u.role === "CUSTOMER") {
+      const bookingsResult = await pool.query(
+        `SELECT b.id FROM bookings b WHERE b.customer_id=$1 ORDER BY b.created_at DESC`,
+        [u.id],
+      );
+      const bookings = (await Promise.all(bookingsResult.rows.map((row) => bookingPayload(row.id)))).filter(Boolean);
+      return res.json({ ...profile, bookings });
+    }
+    return res.json(profile);
+  } catch {
+    return sendError(res, 500, "Unable to get user details");
+  }
+});
+
+router.delete("/admin/users/:id", requireAuth, requireRole("ADMIN"), async (req, res) => {
+  try {
+    const userResult = await pool.query(`SELECT id, role FROM users WHERE id=$1`, [req.params.id]);
+    if (!userResult.rows[0]) return sendError(res, 404, "User not found");
+    if (userResult.rows[0].role === "ADMIN") return sendError(res, 403, "Cannot delete an admin account");
+    await pool.query(`DELETE FROM users WHERE id=$1`, [req.params.id]);
+    return res.status(204).end();
+  } catch {
+    return sendError(res, 500, "Unable to delete user");
+  }
 });
 
 export default router;

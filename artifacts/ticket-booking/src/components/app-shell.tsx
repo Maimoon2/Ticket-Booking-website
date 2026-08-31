@@ -39,6 +39,7 @@ function SceneLogo() {
 export function AppShell({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const queryClient = useQueryClient();
   useHealthCheck({ query: { retry: false, staleTime: 60000, queryKey: getHealthCheckQueryKey() } });
   const meQuery = useGetMe({ query: { retry: false, queryKey: getGetMeQueryKey() } });
@@ -64,13 +65,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="hidden items-center gap-3 md:flex">
           {isStaff && <Link href={user.role === 'ADMIN' ? '/admin/dashboard' : '/organiser/dashboard'} data-testid="link-organiser" className="text-xs font-extrabold uppercase tracking-[.14em] text-muted-foreground transition hover:text-primary">{user.role === 'ADMIN' ? 'Admin console' : 'For organisers'}</Link>}
-          {user ? <div className="group relative">
-            <button data-testid="button-account-menu" className="flex items-center gap-2 rounded-full border border-border bg-card px-2 py-1.5 text-sm font-bold transition hover:border-primary">
+          {user ? <div className="relative">
+            <button onClick={() => setMenuOpen(!menuOpen)} data-testid="button-account-menu" className="flex items-center gap-2 rounded-full border border-border bg-card px-2 py-1.5 text-sm font-bold transition hover:border-primary">
               <span className="grid h-7 w-7 place-items-center rounded-full bg-accent text-xs font-extrabold text-accent-foreground">{initials(user.name)}</span><span className="max-w-24 truncate">{user.name.split(' ')[0]}</span><ChevronDown size={14} />
             </button>
-            <div className="invisible absolute right-0 top-12 w-52 translate-y-1 rounded-xl border border-border bg-card p-2 opacity-0 shadow-scene transition group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
-              <button onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); localStorage.removeItem('scenepass_token'); queryClient.setQueryData(getGetMeQueryKey(), null); window.location.href = '/login'; }} data-testid="button-logout" className="w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-muted-foreground hover:bg-muted hover:text-foreground">Sign out</button>
-            </div>
+            {menuOpen && <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-12 z-50 w-52 rounded-xl border border-border bg-card p-2 shadow-scene">
+                <button onClick={() => { setMenuOpen(false); localStorage.removeItem('scenepass_token'); queryClient.setQueryData(getGetMeQueryKey(), null); window.location.href = '/login'; }} data-testid="button-logout" className="w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-muted-foreground hover:bg-muted hover:text-foreground">Sign out</button>
+              </div>
+            </>}
           </div> : <Link href={`/login?returnTo=${encodeURIComponent(location)}`} data-testid="link-login-header" className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-extrabold text-primary-foreground transition hover:-translate-y-0.5"><LogIn size={15} /> Sign in</Link>}
         </div>
         <button onClick={() => setOpen((value) => !value)} data-testid="button-mobile-menu" className="grid h-10 w-10 place-items-center rounded-lg border border-border md:hidden">{open ? <X size={19} /> : <Menu size={19} />}</button>

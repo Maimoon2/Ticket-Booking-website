@@ -2,9 +2,9 @@ import { ArrowLeft, ArrowRight, BarChart3, CalendarDays, Check, ChevronRight, Cl
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'wouter';
-import { getListEventsQueryKey, getGetMeQueryKey, useCheckout, useClaimWaitlistOffer, useCreateEvent, useCreateHold, useCreateVenue, useCreateVenueSeat, useDeleteVenue, useGetAdminDashboard, useGetBooking, useGetEvent, useGetEventAnalytics, useGetEventSeats, useGetHold, useGetVenue, useJoinWaitlist, useListBookings, useListEvents, useListOrganiserEvents, useListVenues, useListWaitlist, useListWaitlistOffers, useCancelBooking, useUpdateEvent, useUpdateVenue, login, register, getMe } from '@workspace/api-client-react';
+import { getListEventsQueryKey, getGetMeQueryKey, useCheckout, useClaimWaitlistOffer, useCreateEvent, useCreateHold, useCreateVenue, useCreateVenueSeat, useDeleteVenue, useGetAdminDashboard, useGetBooking, useGetEvent, useGetEventAnalytics, useGetEventSeats, useGetHold, useGetVenue, useJoinWaitlist, useListBookings, useListEvents, useListOrganiserEvents, useListVenues, useListWaitlist, useListWaitlistOffers, useCancelBooking, useUpdateEvent, useUpdateVenue, login, register, useListAdminUsers, useDeleteAdminUser, useGetAdminUser, getGetAdminUserQueryKey } from '@workspace/api-client-react';
 import { EventCategory, EventInputCategory, EventSeatStatus, SeatInputCategory, WaitlistInputCategory, type Booking, type Event, type EventInput } from '@workspace/api-client-react';
-import { dateLabel, ErrorNotice, LoadingGrid, money, PageFrame, StatusPill } from '@/components/app-shell';
+import { dateLabel, ErrorNotice, initials, LoadingGrid, money, PageFrame, StatusPill } from '@/components/app-shell';
 
 const art = ['art-coral', 'art-lilac', 'art-amber', 'art-mint'];
 const demoEvents = [
@@ -241,54 +241,138 @@ export function OrganiserEventDetailPage() {
 export function AdminDashboardPage() {
   const query = useGetAdminDashboard();
   const data = query.data;
+  const [tab, setTab] = useState<'overview' | 'organisers' | 'customers'>('overview');
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const detailQuery = useGetAdminUser(selectedUserId ?? '', { query: { enabled: !!selectedUserId, queryKey: getGetAdminUserQueryKey(selectedUserId ?? '') } });
+  const deleteMut = useDeleteAdminUser();
+  const organisersQuery = useListAdminUsers({ role: 'ORGANISER' });
+  const customersQuery = useListAdminUsers({ role: 'CUSTOMER' });
+  const organisers = organisersQuery.data ?? [];
+  const customers = customersQuery.data ?? [];
+  const selectedUser = detailQuery.data;
+  const now = new Date().toISOString();
+
   return <div>
     <div className="border-b border-border bg-gradient-to-r from-secondary/80 to-background">
       <div className="mx-auto max-w-[1440px] px-5 py-10 sm:px-8 lg:py-14">
         <div className="scene-enter">
           <p className="font-mono-scene text-[11px] font-medium uppercase tracking-[.2em] text-primary">Admin console</p>
           <h1 className="mt-2 font-display text-4xl font-extrabold leading-[.98] tracking-[-.05em] sm:text-6xl">The whole picture.</h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">A quiet control room for the platform: supply, demand, and the health of every room.</p>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">Manage users, monitor events, and keep the platform running.</p>
         </div>
       </div>
     </div>
-    <div className="mx-auto max-w-[1440px] px-5 py-9 sm:px-8">
-      {query.isLoading ? <div className="grid gap-4 sm:grid-cols-4">{[1, 2, 3, 4].map((item) => <div className="skeleton h-32 rounded-2xl" key={item} />)}</div> : query.isError ? <ErrorNotice error={query.error} onRetry={() => query.refetch()} /> : <>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5"><p className="font-mono-scene text-[10px] uppercase tracking-[.15em] text-primary">Total events</p><p className="mt-3 font-display text-4xl font-extrabold tracking-[-.05em] text-primary">{String(data?.totalEvents ?? 0)}</p></div>
-          <div className="rounded-2xl border border-accent/20 bg-accent/5 p-5"><p className="font-mono-scene text-[10px] uppercase tracking-[.15em] text-accent">Bookings</p><p className="mt-3 font-display text-4xl font-extrabold tracking-[-.05em] text-accent">{String(data?.totalBookings ?? 0)}</p></div>
-          <Stat label="Revenue" value={money(data?.revenue)} tone="ink" />
-          <Stat label="Occupancy" value={`${data?.occupancy ?? 0}%`} />
-        </div>
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_.8fr]">
-          <section className="rounded-2xl border border-border bg-card p-6">
-            <h2 className="font-display text-2xl font-extrabold">Platform bookings</h2>
-            <p className="mt-1 text-sm text-muted-foreground">The last seven days across every venue.</p>
-            <div className="mt-7"><Bars values={[45, 59, 52, 74, 68, 91, 85]} /></div>
-          </section>
-          <section className="rounded-2xl bg-secondary p-6 text-secondary-foreground">
-            <h2 className="font-display text-2xl font-extrabold">Recent bookings</h2>
-            <div className="mt-5 space-y-4">{(data?.recentBookings ?? []).slice(0, 5).map((booking) => <Link href={`/booking/${booking.id}`} key={booking.id} data-testid={`link-admin-booking-${booking.id}`} className="flex items-center justify-between border-t border-secondary-foreground/15 pt-3 text-sm"><span className="truncate pr-3 font-bold">{booking.event.title}</span><span className="font-mono-scene text-xs text-primary">{money(booking.total)}</span></Link>)}{!data?.recentBookings?.length && <p className="text-sm text-secondary-foreground/60">No bookings to report yet.</p>}</div>
-          </section>
-        </div>
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          <Link href="/admin/venues" data-testid="link-admin-manage-venues" className="group rounded-2xl border border-border bg-card p-5 transition hover:border-primary/50">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary"><Music2 size={18} /></div>
-            <h3 className="mt-4 font-display text-lg font-extrabold">Manage venues</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Add rooms, map seats, set capacity.</p>
-          </Link>
-          <Link href="/admin/venues" data-testid="link-admin-all-events" className="group rounded-2xl border border-border bg-card p-5 transition hover:border-primary/50">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent/10 text-accent"><CalendarDays size={18} /></div>
-            <h3 className="mt-4 font-display text-lg font-extrabold">All events</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Browse every event on the platform.</p>
-          </Link>
-          <Link href="/events" data-testid="link-admin-browse" className="group rounded-2xl border border-border bg-card p-5 transition hover:border-primary/50">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-foreground/5 text-foreground"><Sparkles size={18} /></div>
-            <h3 className="mt-4 font-display text-lg font-extrabold">Browse as user</h3>
-            <p className="mt-1 text-xs text-muted-foreground">See the platform from the customer view.</p>
-          </Link>
-        </div>
+    <div className="mx-auto max-w-[1440px] px-5 py-6 sm:px-8">
+      <div className="flex gap-2 border-b border-border pb-4">
+        {(['overview', 'organisers', 'customers'] as const).map((t) => <button key={t} onClick={() => { setTab(t); setSelectedUserId(null); }} className={`rounded-lg px-4 py-2 text-sm font-extrabold transition ${tab === t ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{t === 'overview' ? 'Overview' : t === 'organisers' ? `Organisers (${organisers.length})` : `Customers (${customers.length})`}</button>)}
+      </div>
+    </div>
+    <div className="mx-auto max-w-[1440px] px-5 pb-14 sm:px-8">
+      {query.isLoading ? <div className="grid gap-4 sm:grid-cols-4">{[1, 2, 3, 4].map((i) => <div className="skeleton h-32 rounded-2xl" key={i} />)}</div> : query.isError ? <ErrorNotice error={query.error} onRetry={() => query.refetch()} /> : <>
+        {tab === 'overview' && <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5"><p className="font-mono-scene text-[10px] uppercase tracking-[.15em] text-primary">Total events</p><p className="mt-3 font-display text-4xl font-extrabold tracking-[-.05em] text-primary">{String(data?.totalEvents ?? 0)}</p></div>
+            <div className="rounded-2xl border border-accent/20 bg-accent/5 p-5"><p className="font-mono-scene text-[10px] uppercase tracking-[.15em] text-accent">Total bookings</p><p className="mt-3 font-display text-4xl font-extrabold tracking-[-.05em] text-accent">{String(data?.totalBookings ?? 0)}</p></div>
+            <Stat label="Revenue" value={money(data?.revenue)} tone="ink" />
+            <Stat label="Occupancy" value={`${data?.occupancy ?? 0}%`} />
+          </div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-border bg-card p-5"><p className="font-mono-scene text-[10px] uppercase tracking-[.15em] text-muted-foreground">Organisers</p><p className="mt-3 font-display text-4xl font-extrabold">{String((data as any)?.totalOrganisers ?? organisers.length)}</p><button onClick={() => setTab('organisers')} className="mt-3 text-xs font-bold text-primary hover:underline">Manage organisers →</button></div>
+            <div className="rounded-2xl border border-border bg-card p-5"><p className="font-mono-scene text-[10px] uppercase tracking-[.15em] text-muted-foreground">Customers</p><p className="mt-3 font-display text-4xl font-extrabold">{String((data as any)?.totalCustomers ?? customers.length)}</p><button onClick={() => setTab('customers')} className="mt-3 text-xs font-bold text-primary hover:underline">Manage customers →</button></div>
+          </div>
+          <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_.8fr]">
+            <section className="rounded-2xl border border-border bg-card p-6">
+              <h2 className="font-display text-2xl font-extrabold">Platform bookings</h2>
+              <p className="mt-1 text-sm text-muted-foreground">The last seven days across every venue.</p>
+              <div className="mt-7"><Bars values={[45, 59, 52, 74, 68, 91, 85]} /></div>
+            </section>
+            <section className="rounded-2xl bg-secondary p-6 text-secondary-foreground">
+              <h2 className="font-display text-2xl font-extrabold">Recent bookings</h2>
+              <div className="mt-5 space-y-4">{(data?.recentBookings ?? []).slice(0, 5).map((booking) => <Link href={`/booking/${booking.id}`} key={booking.id} className="flex items-center justify-between border-t border-secondary-foreground/15 pt-3 text-sm"><span className="truncate pr-3 font-bold">{booking.event.title}</span><span className="font-mono-scene text-xs text-primary">{money(booking.total)}</span></Link>)}{!data?.recentBookings?.length && <p className="text-sm text-secondary-foreground/60">No bookings to report yet.</p>}</div>
+            </section>
+          </div>
+        </>}
+
+        {tab === 'organisers' && <>
+          <h2 className="mb-4 font-display text-2xl font-extrabold">All organisers</h2>
+          {organisersQuery.isLoading ? <div className="space-y-3">{[1, 2, 3].map((i) => <div className="skeleton h-20 rounded-2xl" key={i} />)}</div> : organisers.length ? <div className="space-y-3">{organisers.map((u) => <div key={u.id} className="flex items-center justify-between rounded-2xl border border-border bg-card p-4 transition hover:border-primary/50"><div className="min-w-0 flex-1"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-sm font-extrabold text-primary">{initials(u.name)}</span><div className="min-w-0"><p className="truncate font-bold">{u.name}</p><p className="truncate text-xs text-muted-foreground">{u.email}</p><p className="mt-0.5 text-[10px] text-muted-foreground">Joined {dateLabel(u.createdAt, false)}</p></div></div></div><div className="flex items-center gap-2"><button onClick={() => setSelectedUserId(u.id)} className="rounded-lg bg-primary px-4 py-2 text-xs font-extrabold text-primary-foreground transition hover:-translate-y-0.5">View profile</button><button disabled={deleteMut.isPending} onClick={() => { if (window.confirm(`Delete organiser "${u.name}"? This will remove all their events.`)) deleteMut.mutate(u.id, { onSuccess: () => { organisersQuery.refetch(); query.refetch(); setSelectedUserId(null); } }); }} className="rounded-lg px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-destructive/10 hover:text-destructive">Delete</button></div></div>)}</div> : <EmptyState title="No organisers" detail="No organiser accounts exist yet." />}
+        </>}
+
+        {tab === 'customers' && <>
+          <h2 className="mb-4 font-display text-2xl font-extrabold">All customers</h2>
+          {customersQuery.isLoading ? <div className="space-y-3">{[1, 2, 3].map((i) => <div className="skeleton h-20 rounded-2xl" key={i} />)}</div> : customers.length ? <div className="space-y-3">{customers.map((u) => <div key={u.id} className="flex items-center justify-between rounded-2xl border border-border bg-card p-4 transition hover:border-primary/50"><div className="min-w-0 flex-1"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-full bg-accent/10 text-sm font-extrabold text-accent">{initials(u.name)}</span><div className="min-w-0"><p className="truncate font-bold">{u.name}</p><p className="truncate text-xs text-muted-foreground">{u.email}</p><p className="mt-0.5 text-[10px] text-muted-foreground">Joined {dateLabel(u.createdAt, false)}</p></div></div></div><div className="flex items-center gap-2"><button onClick={() => setSelectedUserId(u.id)} className="rounded-lg bg-primary px-4 py-2 text-xs font-extrabold text-primary-foreground transition hover:-translate-y-0.5">View profile</button><button disabled={deleteMut.isPending} onClick={() => { if (window.confirm(`Delete customer "${u.name}"? This will remove all their bookings.`)) deleteMut.mutate(u.id, { onSuccess: () => { customersQuery.refetch(); query.refetch(); setSelectedUserId(null); } }); }} className="rounded-lg px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-destructive/10 hover:text-destructive">Delete</button></div></div>)}</div> : <EmptyState title="No customers" detail="No customer accounts exist yet." />}
+        </>}
       </>}
     </div>
+
+    {selectedUser && <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-12 sm:pt-20" onClick={() => setSelectedUserId(null)}>
+      <div className="w-full max-w-3xl rounded-2xl border border-border bg-background shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-sm font-extrabold text-primary">{initials(selectedUser.name)}</span>
+            <div><p className="font-display text-xl font-extrabold">{selectedUser.name}</p><p className="text-sm text-muted-foreground">{selectedUser.email}</p></div>
+          </div>
+          <button onClick={() => setSelectedUserId(null)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><X size={20} /></button>
+        </div>
+
+        {detailQuery.isLoading ? <div className="p-6 space-y-4">{[1, 2, 3].map((i) => <div className="skeleton h-24 rounded-xl" key={i} />)}</div> : selectedUser.role === 'ORGANISER' ? <OrganiserDetailView user={selectedUser} now={now} /> : <CustomerDetailView user={selectedUser} now={now} />}
+      </div>
+    </div>}
+  </div>;
+}
+
+function OrganiserDetailView({ user, now }: { user: { name: string; email: string; role: string; createdAt: string; events?: any[]; bookings?: any[] }; now: string }) {
+  const events = user.events ?? [];
+  const live = events.filter((ev: any) => ev.startsAt > now);
+  const completed = events.filter((ev: any) => ev.startsAt <= now);
+  const totalSeats = events.reduce((sum: number, ev: any) => sum + (ev.availableSeats ?? 0), 0);
+  return <div className="px-6 py-5">
+    <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="rounded-xl bg-muted p-3 text-center"><p className="font-display text-2xl font-extrabold text-primary">{events.length}</p><p className="text-[10px] uppercase tracking-[.12em] text-muted-foreground">Total events</p></div>
+      <div className="rounded-xl bg-muted p-3 text-center"><p className="font-display text-2xl font-extrabold text-accent">{live.length}</p><p className="text-[10px] uppercase tracking-[.12em] text-muted-foreground">Live / upcoming</p></div>
+      <div className="rounded-xl bg-muted p-3 text-center"><p className="font-display text-2xl font-extrabold text-foreground">{completed.length}</p><p className="text-[10px] uppercase tracking-[.12em] text-muted-foreground">Completed</p></div>
+      <div className="rounded-xl bg-muted p-3 text-center"><p className="font-display text-2xl font-extrabold text-foreground">{totalSeats}</p><p className="text-[10px] uppercase tracking-[.12em] text-muted-foreground">Seats available</p></div>
+    </div>
+
+    {live.length > 0 && <>
+      <p className="font-mono-scene text-[10px] uppercase tracking-[.2em] text-primary">Live / upcoming events ({live.length})</p>
+      <div className="mt-3 space-y-3">{live.map((ev) => <div key={ev.id} className="flex items-center gap-4 rounded-xl border border-border bg-card p-4"><div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg"><EventArt event={ev} index={0} /></div><div className="min-w-0 flex-1"><p className="truncate font-bold">{ev.title}</p><p className="text-xs text-muted-foreground">{dateLabel(ev.startsAt)}</p><p className="text-xs text-muted-foreground">{ev.venue.name}, {ev.venue.city}</p></div><div className="text-right"><StatusPill tone="good">Live</StatusPill><p className="mt-1 font-mono-scene text-xs">{ev.availableSeats} seats left</p><p className="font-mono-scene text-xs text-primary">from {money(ev.minPrice)}</p></div></div>)}</div>
+    </>}
+
+    {completed.length > 0 && <>
+      <p className="mt-6 font-mono-scene text-[10px] uppercase tracking-[.2em] text-muted-foreground">Completed events ({completed.length})</p>
+      <div className="mt-3 space-y-3">{completed.map((ev) => <div key={ev.id} className="flex items-center gap-4 rounded-xl border border-border bg-card/60 p-4 opacity-75"><div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg"><EventArt event={ev} index={1} /></div><div className="min-w-0 flex-1"><p className="truncate font-bold">{ev.title}</p><p className="text-xs text-muted-foreground">{dateLabel(ev.startsAt)}</p><p className="text-xs text-muted-foreground">{ev.venue.name}, {ev.venue.city}</p></div><div className="text-right"><StatusPill tone="neutral">Completed</StatusPill><p className="mt-1 font-mono-scene text-xs text-muted-foreground">{ev.availableSeats} seats</p></div></div>)}</div>
+    </>}
+
+    {events.length === 0 && <div className="py-8 text-center"><p className="text-sm text-muted-foreground">This organiser has not created any events yet.</p></div>}
+  </div>;
+}
+
+function CustomerDetailView({ user, now }: { user: { name: string; email: string; role: string; createdAt: string; events?: any[]; bookings?: any[] }; now: string }) {
+  const bookings = user.bookings ?? [];
+  const confirmed = bookings.filter((b: any) => b.status === 'CONFIRMED');
+  const cancelled = bookings.filter((b: any) => b.status === 'CANCELLED');
+  const totalSpent = confirmed.reduce((sum: number, b: any) => sum + b.total, 0);
+  const totalTickets = confirmed.reduce((sum: number, b: any) => sum + b.seats.length, 0);
+  return <div className="px-6 py-5">
+    <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="rounded-xl bg-muted p-3 text-center"><p className="font-display text-2xl font-extrabold text-primary">{bookings.length}</p><p className="text-[10px] uppercase tracking-[.12em] text-muted-foreground">Total bookings</p></div>
+      <div className="rounded-xl bg-muted p-3 text-center"><p className="font-display text-2xl font-extrabold text-accent">{confirmed.length}</p><p className="text-[10px] uppercase tracking-[.12em] text-muted-foreground">Confirmed</p></div>
+      <div className="rounded-xl bg-muted p-3 text-center"><p className="font-display text-2xl font-extrabold text-foreground">{totalTickets}</p><p className="text-[10px] uppercase tracking-[.12em] text-muted-foreground">Tickets bought</p></div>
+      <div className="rounded-xl bg-muted p-3 text-center"><p className="font-display text-2xl font-extrabold text-primary">{money(totalSpent)}</p><p className="text-[10px] uppercase tracking-[.12em] text-muted-foreground">Total spent</p></div>
+    </div>
+
+    {confirmed.length > 0 && <>
+      <p className="font-mono-scene text-[10px] uppercase tracking-[.2em] text-primary">Confirmed bookings ({confirmed.length})</p>
+      <div className="mt-3 space-y-3">{confirmed.map((b: any) => <div key={b.id} className="rounded-xl border border-border bg-card p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><StatusPill tone="good">Confirmed</StatusPill><span className="font-mono-scene text-[10px] text-muted-foreground">{b.reference}</span></div><p className="mt-2 truncate font-bold">{b.event.title}</p><p className="text-xs text-muted-foreground">{dateLabel(b.event.startsAt)}</p><p className="text-xs text-muted-foreground">{b.event.venue.name}, {b.event.venue.city}</p></div><span className="shrink-0 font-mono-scene text-sm font-bold">{money(b.total)}</span></div><div className="mt-3 flex flex-wrap gap-1.5">{b.seats.map((s: any) => <span key={s.id} className="rounded-md bg-secondary px-2 py-1 font-mono-scene text-[10px] font-bold">{s.label}</span>)}</div></div>)}</div>
+    </>}
+
+    {cancelled.length > 0 && <>
+      <p className="mt-6 font-mono-scene text-[10px] uppercase tracking-[.2em] text-muted-foreground">Cancelled bookings ({cancelled.length})</p>
+      <div className="mt-3 space-y-3">{cancelled.map((b: any) => <div key={b.id} className="rounded-xl border border-border bg-card/60 p-4 opacity-60"><div className="flex items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><StatusPill tone="bad">Cancelled</StatusPill><span className="font-mono-scene text-[10px] text-muted-foreground">{b.reference}</span></div><p className="mt-2 truncate font-bold">{b.event.title}</p><p className="text-xs text-muted-foreground">{dateLabel(b.event.startsAt)}</p></div><span className="shrink-0 font-mono-scene text-sm text-muted-foreground line-through">{money(b.total)}</span></div><div className="mt-3 flex flex-wrap gap-1.5">{b.seats.map((s: any) => <span key={s.id} className="rounded-md bg-muted px-2 py-1 font-mono-scene text-[10px] text-muted-foreground">{s.label}</span>)}</div></div>)}</div>
+    </>}
+
+    {bookings.length === 0 && <div className="py-8 text-center"><p className="text-sm text-muted-foreground">This customer has not made any bookings yet.</p></div>}
   </div>;
 }
 
@@ -343,6 +427,6 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'CUSTOMER' });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const submit = async (event: FormEvent) => { event.preventDefault(); setPending(true); setError(null); try { const result = mode === 'login' ? await login({ email: form.email, password: form.password }) : await register({ name: form.name, email: form.email, password: form.password, role: form.role as 'CUSTOMER' | 'ORGANISER' }); localStorage.setItem('scenepass_token', result.token); await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() }); const params = new URLSearchParams(window.location.search); const returnTo = params.get('returnTo'); if (returnTo) { setLocation(returnTo); } else { const me = await getMe(); const role = me?.role ?? form.role; setLocation(role === 'ADMIN' ? '/admin/dashboard' : role === 'ORGANISER' ? '/organiser/dashboard' : '/events'); } } catch (caught) { setError(caught instanceof Error ? caught : new Error('Unable to authenticate')); } finally { setPending(false); } };
+  const submit = async (event: FormEvent) => { event.preventDefault(); setPending(true); setError(null); try { const result = mode === 'login' ? await login({ email: form.email, password: form.password }) : await register({ name: form.name, email: form.email, password: form.password, role: form.role as 'CUSTOMER' | 'ORGANISER' }); localStorage.setItem('scenepass_token', result.token); await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() }); const params = new URLSearchParams(window.location.search); const returnTo = params.get('returnTo'); const role = result.user?.role ?? form.role; if (returnTo) { setLocation(returnTo); } else { setLocation(role === 'ADMIN' ? '/admin/dashboard' : role === 'ORGANISER' ? '/organiser/dashboard' : '/events'); } } catch (caught) { setError(caught instanceof Error ? caught : new Error('Unable to authenticate')); } finally { setPending(false); } };
   return <div className="grid min-h-[calc(100dvh-72px)] lg:grid-cols-[.9fr_1.1fr]"><div className="hidden bg-secondary p-12 text-secondary-foreground lg:flex lg:flex-col lg:justify-between"><div><Link href="/" data-testid="link-auth-logo" className="font-display text-2xl font-extrabold">ScenePass</Link><div className="mt-28 max-w-md"><p className="font-mono-scene text-[11px] uppercase tracking-[.2em] text-primary">A little anticipation</p><h1 className="mt-4 font-display text-7xl font-extrabold leading-[.86] tracking-[-.07em]">The best<br />part is<br /><span className="text-primary">almost here.</span></h1></div></div><p className="text-sm text-secondary-foreground/50">Your tickets. Your scenes. One pass.</p></div><div className="flex items-center justify-center px-5 py-12 sm:px-10"><div className="w-full max-w-md scene-enter"><div className="mb-9"><p className="font-mono-scene text-[11px] uppercase tracking-[.2em] text-primary">{mode === 'login' ? 'Welcome back' : 'Join the audience'}</p><h2 className="mt-3 font-display text-5xl font-extrabold leading-none tracking-[-.06em]">{mode === 'login' ? 'Back for more?' : 'Make an entrance.'}</h2><p className="mt-4 text-sm leading-6 text-muted-foreground">{mode === 'login' ? 'Sign in to pick up where you left off.' : 'Create a pass for the nights you want to remember.'}</p></div><form onSubmit={submit} className="space-y-4">{mode === 'register' && <><label className="field">Your name<input required minLength={2} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="input-register-name" placeholder="Alex Rivera" /></label><label className="field">I am joining as<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} data-testid="select-register-role"><option value="CUSTOMER">A customer</option><option value="ORGANISER">An organiser</option></select></label></>}<label className="field">Email<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="input-auth-email" placeholder="you@example.com" /></label><label className="field">Password<input required minLength={8} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="input-auth-password" placeholder="At least 8 characters" /></label>{error && <ErrorNotice error={error} />}{error && <p className="text-xs text-muted-foreground">Check your details and try again.</p>}<button disabled={pending} data-testid="button-submit-auth" className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3.5 text-sm font-extrabold text-primary-foreground disabled:opacity-50">{pending ? 'One moment…' : mode === 'login' ? 'Sign in' : 'Create my pass'} <ArrowRight size={16} /></button></form><p className="mt-7 text-center text-sm text-muted-foreground">{mode === 'login' ? 'New to ScenePass?' : 'Already have a pass?'} <Link href={mode === 'login' ? '/register' : '/login'} data-testid="link-switch-auth" className="font-extrabold text-primary">{mode === 'login' ? 'Create an account' : 'Sign in'}</Link></p></div></div></div>;
 }
